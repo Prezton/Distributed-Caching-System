@@ -105,8 +105,12 @@ class Proxy {
 			if (buf == null) {
 				return Errors.EINVAL;
 			}
+			
 
 			FileInfo fileinfo = fd_file_map.get(fd);
+			if (fileinfo.is_dir) {
+				return Errors.EISDIR;
+			}
 			RandomAccessFile raf = fileinfo.raf;
 
 			try {
@@ -132,7 +136,9 @@ class Proxy {
 			}
 			FileInfo fileinfo = fd_file_map.get(fd);
 			RandomAccessFile raf = fileinfo.raf;
-			
+			if (fileinfo.is_dir) {
+				return Errors.EISDIR;
+			}
 			try {
 				long length = (long) raf.read(buf);
 				if (length == -1) {
@@ -160,6 +166,9 @@ class Proxy {
 
 			FileInfo fileinfo = fd_file_map.get(fd);
 			RandomAccessFile raf = fileinfo.raf;
+			if (fileinfo.is_dir) {
+				return Errors.EISDIR;
+			}
 
 			long new_pos = pos;
 			if (o == LseekOption.FROM_CURRENT) {

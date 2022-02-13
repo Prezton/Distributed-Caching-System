@@ -8,7 +8,7 @@ class Proxy {
     /**
      * map between fd and RandomAccessFile Object
      */
-	private Map<Integer, RandomAccessFile> fd_file_map = new HashMap<Integer, RandomAccessFile>();
+	private static Map<Integer, RandomAccessFile> fd_file_map = new HashMap<Integer, RandomAccessFile>();
 	
 	private static class FileHandler implements FileHandling {
 
@@ -48,11 +48,14 @@ class Proxy {
 			}
 			int intFD = raf.hashCode();
 			fd_file_map.put(intFD, raf);
-			
+
 			return intFD;
 		}
 
 		public int close( int fd ) {
+			if (!fd_file_map.containsKey(fd)) {
+				return Errors.EBADF;
+			}
 			return Errors.ENOSYS;
 		}
 

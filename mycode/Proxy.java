@@ -115,7 +115,39 @@ class Proxy {
 		}
 
 		public long lseek( int fd, long pos, LseekOption o ) {
-			return Errors.ENOSYS;
+			if (!fd_file_map.containsKey(fd)) {
+				return Errors.EBADF;
+			}
+			RandomAccessFile raf = fd_file_map.get(fd);
+			long new_pos = pos;
+			if (o == LseekOption.FROM_CURRENT) {
+				try {
+					long current_offset = raf.getFilePointer();
+					new_pos = pos + current_offset;
+					raf.seek(new_pos);
+				} catch (IOException e) {
+					// question about those IOExceptions!!!
+					return Errors.EINVAL;
+				}
+
+			} else if (o == LseekOption.FROM_END) {
+				try {
+					long length = raf.length();
+					new_pos = length - pos;
+					raf.seek(new_pos);
+				} catch (IOException e) {
+					return Errors.EINVAL;
+				}
+			} else if (o == LseekOption.FROM_START) {
+				try {
+					new_pos = pos;
+					raf.seek(new_pos);
+				} catch (IOException e) {
+					return Errors.EINVAL;
+				}
+			}
+			return new_pos;
+
 		}
 
 		public int unlink( String path ) {

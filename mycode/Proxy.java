@@ -86,7 +86,7 @@ class Proxy {
 			} catch (IOException e) {
 				return Errors.EBADF;
 			}
-			return 0;
+			return buf.length;
 
 		}
 
@@ -95,7 +95,23 @@ class Proxy {
 			if (!fd_file_map.containsKey(fd)) {
 				return Errors.EBADF;
 			}
-			return Errors.ENOSYS;
+
+			if (buf == null) {
+				return Errors.EINVAL;
+			}
+			RandomAccessFile raf = fd_file_map.get(fd);
+
+			try {
+				long length = (long) raf.read(buf);
+				if (length == -1) {
+					return 0;
+				}
+				return length;
+			} catch (IOException e) {
+				return Errors.EBADF;
+			}
+			
+
 		}
 
 		public long lseek( int fd, long pos, LseekOption o ) {

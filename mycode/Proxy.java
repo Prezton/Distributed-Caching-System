@@ -56,6 +56,7 @@ class Proxy {
 			if (!fd_file_map.containsKey(fd)) {
 				return Errors.EBADF;
 			}
+
 			RandomAccessFile raf = fd_file_map.get(fd);
 			if (raf.equals(null)) {
 				System.out.println("this would not happen normally");
@@ -70,7 +71,13 @@ class Proxy {
 		}
 
 		public long write( int fd, byte[] buf ) {
-			return Errors.ENOSYS;
+			if (!fd_file_map.containsKey(fd)) {
+				return Errors.EBADF;
+			}
+
+			RandomAccessFile raf = fd_file_map.get(fd);
+			return 0;
+
 		}
 
 		public long read( int fd, byte[] buf ) {

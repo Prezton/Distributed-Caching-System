@@ -8,7 +8,16 @@ class Proxy {
     /**
      * map between fd and RandomAccessFile Object
      */
-	private static Map<Integer, RandomAccessFile> fd_file_map = new HashMap<Integer, RandomAccessFile>();
+	private static Map<Integer, FileInfo> fd_file_map = new HashMap<Integer, FileInfo>();
+	private static int fd_count = 0;
+
+	private static class FileInfo {
+		public RandomAccessFile raf;
+		public boolean is_dir;
+		public FileInfo() {
+
+		}
+	}
 	
 	private static class FileHandler implements FileHandling {
 
@@ -17,22 +26,27 @@ class Proxy {
 			if (path == null || path.equals("")) {
 				return Errors.EINVAL;
 			}
-
+			System.err.print("open, mode: ");
 			String access_mode;
 			boolean check_existed = false;
 			if (o == OpenOption.CREATE) {
 				access_mode = "rw";
+				System.err.println("CREATE");
 			} else if (o == OpenOption.CREATE_NEW) {
 				access_mode = "rw";
 				check_existed = true;
+				System.err.println("CREATE NEW");
+
 			} else if (o == OpenOption.READ) {
 				access_mode = "r";
+				System.err.println("READ");
+
 			} else if (o == OpenOption.WRITE) {
 				access_mode = "rw";
+				System.err.println("WRITE");
 			} else {
 				return Errors.EINVAL;
 			}
-			
 			File file = new File(path);
 			if (check_existed) {
 				boolean whether_existed = file.exists();
@@ -40,14 +54,22 @@ class Proxy {
 					return Errors.EEXIST;
 				}
 			}
+			
 			RandomAccessFile raf;
+			FileInfo fileinfo = new FileInfo();
+			fileinfo.is_dir = file.isDirectory();
+			
 			try {
 				raf = new RandomAccessFile(file, access_mode);
+				fileinfo.raf = raf;
 			} catch (FileNotFoundException e) {
+				System.err.println("exception in open: RandomAccessFile");
+				e.printStackTrace();
 				return Errors.ENOENT;
 			}
-			int intFD = raf.hashCode();
-			fd_file_map.put(intFD, raf);
+			fd_count += 1;
+			int intFD = fd_count + raf.hashCode();
+			fd_file_map.put(intFD, fileinfo);
 
 			return intFD;
 		}
@@ -56,8 +78,10 @@ class Proxy {
 			if (!fd_file_map.containsKey(fd)) {
 				return Errors.EBADF;
 			}
+			System.err.println("close");
 
-			RandomAccessFile raf = fd_file_map.get(fd);
+			FileInfo fileinfo = fd_file_map.get(fd);
+			RandomAccessFile raf = fileinfo.raf;
 			if (raf.equals(null)) {
 				System.out.println("this would not happen normally");
 			}
@@ -65,6 +89,8 @@ class Proxy {
 				raf.close();
 				fd_file_map.remove(fd);
 			} catch (IOException e) {
+				System.err.println("exception in close: raf.close");
+				e.printStackTrace();
 				return -1;
 			}
 			return 0;
@@ -74,16 +100,20 @@ class Proxy {
 			if (!fd_file_map.containsKey(fd)) {
 				return Errors.EBADF;
 			}
+			System.err.println("write");
 
 			if (buf == null) {
 				return Errors.EINVAL;
 			}
 
-			RandomAccessFile raf = fd_file_map.get(fd);
+			FileInfo fileinfo = fd_file_map.get(fd);
+			RandomAccessFile raf = fileinfo.raf;
 
 			try {
 				raf.write(buf);
 			} catch (IOException e) {
+				System.err.println("exception in raf.write");
+				e.printStackTrace();
 				return Errors.EBADF;
 			}
 			return buf.length;
@@ -95,19 +125,24 @@ class Proxy {
 			if (!fd_file_map.containsKey(fd)) {
 				return Errors.EBADF;
 			}
+			System.err.println("read");
 
 			if (buf == null) {
 				return Errors.EINVAL;
 			}
-			RandomAccessFile raf = fd_file_map.get(fd);
-
+			FileInfo fileinfo = fd_file_map.get(fd);
+			RandomAccessFile raf = fileinfo.raf;
+			
 			try {
 				long length = (long) raf.read(buf);
 				if (length == -1) {
+					// reach end of file
 					return 0;
 				}
 				return length;
 			} catch (IOException e) {
+				System.err.println("err in raf.read");
+				e.printStackTrace();
 				return Errors.EBADF;
 			}
 			
@@ -121,7 +156,11 @@ class Proxy {
 			if (pos < 0) {
 				return Errors.EINVAL;
 			}
-			RandomAccessFile raf = fd_file_map.get(fd);
+			System.err.println("lseek");
+
+			FileInfo fileinfo = fd_file_map.get(fd);
+			RandomAccessFile raf = fileinfo.raf;
+
 			long new_pos = pos;
 			if (o == LseekOption.FROM_CURRENT) {
 				try {
@@ -130,6 +169,8 @@ class Proxy {
 					raf.seek(new_pos);
 				} catch (IOException e) {
 					// question about those IOExceptions!!!
+					System.err.println("err in raf.seek");
+					e.printStackTrace();
 					return Errors.EINVAL;
 				}
 
@@ -139,6 +180,8 @@ class Proxy {
 					new_pos = length - pos;
 					raf.seek(new_pos);
 				} catch (IOException e) {
+					System.err.println("err in raf.seek");
+					e.printStackTrace();
 					return Errors.EINVAL;
 				}
 			} else if (o == LseekOption.FROM_START) {
@@ -146,6 +189,8 @@ class Proxy {
 					new_pos = pos;
 					raf.seek(new_pos);
 				} catch (IOException e) {
+					System.err.println("err in raf.seek");
+					e.printStackTrace();
 					return Errors.EINVAL;
 				}
 			}
@@ -160,10 +205,14 @@ class Proxy {
 			if (!file.exists()) {
 				return Errors.ENOENT;
 			}
+			System.err.println("unlink");
+
 			try {
 				file.delete();
 				return 0;
 			} catch (SecurityException e) {
+				System.err.println("err in file.delete()");
+				e.printStackTrace();
 				return Errors.EPERM;
 			}
 			

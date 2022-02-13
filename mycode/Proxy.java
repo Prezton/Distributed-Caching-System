@@ -70,19 +70,26 @@ class Proxy {
 			return 0;
 		}
 
-		public long write( int fd, byte[] buf ) {
+		public synchronized long write( int fd, byte[] buf ) {
 			if (!fd_file_map.containsKey(fd)) {
 				return Errors.EBADF;
 			}
 
 			RandomAccessFile raf = fd_file_map.get(fd);
+			try {
+				raf.write(buf);
+			} catch (IOException e) {
+				return Errors.
+			}
 			return 0;
 
 		}
 
 		public long read( int fd, byte[] buf ) {
 			// System.out.println("read");
-
+			if (!fd_file_map.containsKey(fd)) {
+				return Errors.EBADF;
+			}
 			return Errors.ENOSYS;
 		}
 

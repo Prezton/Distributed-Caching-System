@@ -29,6 +29,7 @@ class Proxy {
 			System.err.print("open, mode: ");
 			String access_mode;
 			boolean check_existed = false;
+			File file = new File(path);
 			if (o == OpenOption.CREATE) {
 				access_mode = "rw";
 				System.err.println("CREATE");
@@ -47,20 +48,29 @@ class Proxy {
 			} else {
 				return Errors.EINVAL;
 			}
-			File file = new File(path);
-			if (check_existed) {
-				boolean whether_existed = file.exists();
-				if (whether_existed) {
+
+			boolean is_dir = file.isDirectory();
+			if (file.exists()) {
+				if (check_existed) {
 					return Errors.EEXIST;
+				}
+				if (is_dir) {
+					if (o != OpenOption.READ) {
+						return Errors.EISDIR;
+					}
+				}
+			} else {
+				if ((o == OpenOption.READ) || (o == OpenOption.WRITE)) {
+					return Errors.ENOENT;
 				}
 			}
 			
 			RandomAccessFile raf;
 			FileInfo fileinfo = new FileInfo();
-			fileinfo.is_dir = file.isDirectory();
+			fileinfo.is_dir = is_dir;
 			
 			try {
-				raf = new RandomAccessFile(file, access_mode);
+				raf = new RandomAccessFile(path, access_mode);
 				fileinfo.raf = raf;
 			} catch (FileNotFoundException e) {
 				System.err.println("exception in open: RandomAccessFile");

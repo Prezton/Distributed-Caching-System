@@ -52,11 +52,21 @@ class Proxy {
 			return intFD;
 		}
 
-		public int close( int fd ) {
+		public synchronized int close( int fd ) {
 			if (!fd_file_map.containsKey(fd)) {
 				return Errors.EBADF;
 			}
-			return Errors.ENOSYS;
+			RandomAccessFile raf = fd_file_map.get(fd);
+			if (raf.equals(null)) {
+				System.out.println("this would not happen normally");
+			}
+			try {
+				raf.close();
+				fd_file_map.remove(fd);
+			} catch (IOException e) {
+				return -1;
+			}
+			return 0;
 		}
 
 		public long write( int fd, byte[] buf ) {

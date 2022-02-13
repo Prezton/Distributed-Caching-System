@@ -75,11 +75,16 @@ class Proxy {
 				return Errors.EBADF;
 			}
 
+			if (buf == null) {
+				return Errors.EINVAL;
+			}
+
 			RandomAccessFile raf = fd_file_map.get(fd);
+
 			try {
 				raf.write(buf);
 			} catch (IOException e) {
-				return Errors.
+				return Errors.EBADF;
 			}
 			return 0;
 

@@ -118,6 +118,9 @@ class Proxy {
 			if (!fd_file_map.containsKey(fd)) {
 				return Errors.EBADF;
 			}
+			if (pos < 0) {
+				return Errors.EINVAL;
+			}
 			RandomAccessFile raf = fd_file_map.get(fd);
 			long new_pos = pos;
 			if (o == LseekOption.FROM_CURRENT) {
@@ -147,14 +150,27 @@ class Proxy {
 				}
 			}
 			return new_pos;
-
 		}
 
 		public int unlink( String path ) {
-			return Errors.ENOSYS;
+			if (path == null) {
+				return Errors.EINVAL;
+			}
+			File file = new File(path);
+			if (!file.exists()) {
+				return Errors.ENOENT;
+			}
+			try {
+				file.delete();
+				return 0;
+			} catch (SecurityException e) {
+				return Errors.EPERM;
+			}
+			
 		}
 
 		public void clientdone() {
+			System.err.println("Client Done!!!");
 			return;
 		}
 

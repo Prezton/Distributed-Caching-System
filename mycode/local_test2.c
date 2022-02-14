@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 void main() {
-    char *path = "./testdir";
-    int fd = open(path, O_RDONLY);
+    char *path = "./foo2";
+    int fd = open(path, O_RDWR);
     char *buf = malloc(sizeof(5));
     char *test = "test2";
     printf("test open %d\n", fd);

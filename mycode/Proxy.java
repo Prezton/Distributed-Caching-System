@@ -71,8 +71,12 @@ class Proxy {
             fileinfo.is_dir = is_dir;
             System.err.println("File Type: is dir: " + is_dir + "exists: " + file.exists());
             try {
-                raf = new RandomAccessFile(file, access_mode);
-                fileinfo.raf = raf;
+                if (!fileinfo.is_dir) {
+                    raf = new RandomAccessFile(file, access_mode);
+                    fileinfo.raf = raf;
+                } else {
+                    fileinfo.raf = null;
+                }
             } catch (FileNotFoundException e) {
                 System.err.println("exception in open: RandomAccessFile");
                 e.printStackTrace();
@@ -98,9 +102,20 @@ class Proxy {
             }
 
             FileInfo fileinfo = fd_file_map.get(fd);
-            RandomAccessFile raf = fileinfo.raf;
+            RandomAccessFile raf;
+            if (!fileinfo.is_dir) {
+                raf = fileinfo.raf;
+            } else {
+                fd_file_map.remove(fd);
+                return 0;
+            }
             if (raf.equals(null)) {
-                System.out.println("this would not happen normally");
+                System.err.println("close: null raf! STH WRONG!");
+                if (fd_file_map.containsKey(fd)) {
+                    fd_file_map.remove(fd);
+                    return 0;
+                }
+
             }
             try {
                 raf.close();
@@ -152,10 +167,10 @@ class Proxy {
                 return Errors.EINVAL;
             }
             FileInfo fileinfo = fd_file_map.get(fd);
-            RandomAccessFile raf = fileinfo.raf;
             if (fileinfo.is_dir) {
                 return Errors.EISDIR;
             }
+            RandomAccessFile raf = fileinfo.raf;
             try {
                 long length = (long) raf.read(buf);
                 if (length == -1) {

@@ -13,6 +13,7 @@ public class Server extends UnicastRemoteObject{
 
 
     public static void main(String[] args) {
-
+        int port = Integer.parseInt(args[0]);
+        String rootdir = args[1]; 
     }
 }

@@ -276,6 +276,12 @@ class Proxy {
 
     public static void main(String[] args) throws IOException {
         // System.out.println("Hello World");
+
+        String serverip = args[0];
+        int port = Integer.parseInt(args[1]);
+        String cache_dir = args[2];
+        int cache_size = Integer.parseInt(args[3]);
+
         (new RPCreceiver(new FileHandlingFactory())).run();
     }
 }

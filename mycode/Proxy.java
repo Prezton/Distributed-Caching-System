@@ -1,6 +1,8 @@
 /* Sample skeleton for proxy */
 
 import java.io.*;
+import java.rmi.Naming;
+import java.rmi.NotBoundException;
 import java.util.*;
 
 class Proxy {
@@ -11,6 +13,7 @@ class Proxy {
     private static Map<Integer, FileInfo> fd_file_map = new HashMap<Integer, FileInfo>();
     private static int fd_count = 0;
     private static final Object lock = new Object();
+    private static final String server_name = "peizhaolServer";
 
     private static class FileInfo {
         public RandomAccessFile raf;
@@ -281,6 +284,15 @@ class Proxy {
         int port = Integer.parseInt(args[1]);
         String cache_dir = args[2];
         int cache_size = Integer.parseInt(args[3]);
+
+        RemoteOps srv;
+
+        try {
+            // Look up reference in registry
+            srv = (RemoteOps) Naming.lookup(server_name);
+        } catch (NotBoundException e) {
+            e.printStackTrace();
+        }
 
         (new RPCreceiver(new FileHandlingFactory())).run();
     }

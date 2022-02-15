@@ -14,14 +14,6 @@ class Proxy {
     private static int fd_count = 0;
     private static final Object lock = new Object();
     private static final String server_name = "peizhaolServer";
-
-    private static class FileInfo {
-        public RandomAccessFile raf;
-        public boolean is_dir;
-        public FileInfo() {
-
-        }
-    }
     
     private static class FileHandler implements FileHandling {
 
@@ -72,6 +64,7 @@ class Proxy {
             RandomAccessFile raf;
             FileInfo fileinfo = new FileInfo();
             fileinfo.is_dir = is_dir;
+            fileinfo.is_existed = true;
             System.err.println("File Type: is dir: " + is_dir + "exists: " + file.exists());
             try {
                 if (!fileinfo.is_dir) {
@@ -297,4 +290,3 @@ class Proxy {
         (new RPCreceiver(new FileHandlingFactory())).run();
     }
 }
-

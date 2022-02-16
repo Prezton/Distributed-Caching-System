@@ -1,6 +1,10 @@
 import java.io.*;
 
-public class FileInfo implements Serializable{
+
+/**
+* @brief file information used on proxy
+*/
+public class FileInfo{
     public RandomAccessFile raf;
     public boolean is_dir;
     public boolean is_existed;

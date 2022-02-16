@@ -3,6 +3,7 @@
 import java.io.*;
 import java.rmi.Naming;
 import java.rmi.NotBoundException;
+import java.rmi.RemoteException;
 import java.util.*;
 
 class Proxy {
@@ -13,8 +14,9 @@ class Proxy {
     private static Map<Integer, FileInfo> fd_file_map = new HashMap<Integer, FileInfo>();
     private static int fd_count = 0;
     private static final Object lock = new Object();
-    private static final String server_name = "peizhaolServer";
-    
+    private static String server_name;
+    private static RemoteOps srv;
+
     private static class FileHandler implements FileHandling {
 
         public synchronized int open( String path, OpenOption o ) {
@@ -60,7 +62,6 @@ class Proxy {
                     return Errors.ENOENT;
                 }
             }
-            
             RandomAccessFile raf;
             FileInfo fileinfo = new FileInfo();
             fileinfo.is_dir = is_dir;
@@ -278,7 +279,7 @@ class Proxy {
         String cache_dir = args[2];
         int cache_size = Integer.parseInt(args[3]);
 
-        RemoteOps srv;
+        server_name = "//" + serverip + ":" + port + "/peizhaolServer";
 
         try {
             // Look up reference in registry

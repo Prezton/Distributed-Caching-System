@@ -16,6 +16,9 @@ class Proxy {
     private static final Object lock = new Object();
     private static String server_name;
     private static RemoteOps srv;
+    private static String cache_dir;
+    private static int cache_size;
+    private static Cache cache;
 
     private static class FileHandler implements FileHandling {
 
@@ -25,9 +28,16 @@ class Proxy {
             if (path == null || path.equals("")) {
                 return Errors.EINVAL;
             }
+            Reply_FileInfo reply_fileinfo = null;
+            try {
+                reply_fileinfo = srv.get_file_info(path);
+            } catch (RemoteException e) {
+                System.err.println("Exception on getting remote file info");
+                e.printStackTrace();
+            }
+
             String access_mode;
             boolean check_existed = false;
-            File file = new File(path);
             if (o == OpenOption.CREATE) {
                 access_mode = "rw";
                 System.err.println("CREATE");
@@ -47,8 +57,14 @@ class Proxy {
                 return Errors.EINVAL;
             }
 
-            boolean is_dir = file.isDirectory();
-            if (file.exists()) {
+            // boolean is_dir = file.isDirectory();
+            
+            // Set a series of flags according to Server returned infomation
+            boolean is_dir = reply_fileinfo.is_dir;
+            boolean is_existed = reply_fileinfo.is_existed;
+            int remote_version_num = reply_fileinfo.version;
+
+            if (is_existed) {
                 if (check_existed) {
                     return Errors.EEXIST;
                 }
@@ -65,8 +81,13 @@ class Proxy {
             RandomAccessFile raf;
             FileInfo fileinfo = new FileInfo();
             fileinfo.is_dir = is_dir;
-            fileinfo.is_existed = true;
-            System.err.println("File Type: is dir: " + is_dir + "exists: " + file.exists());
+            fileinfo.is_existed = is_existed;
+
+
+            // Instantiate a file corresponding to cache_path
+            String cache_path = get_cache_path(path);
+            File file = new File(cache_path);
+
             try {
                 if (!fileinfo.is_dir) {
                     raf = new RandomAccessFile(file, access_mode);
@@ -75,10 +96,14 @@ class Proxy {
                     fileinfo.raf = null;
                 }
             } catch (FileNotFoundException e) {
-                System.err.println("exception in open: RandomAccessFile");
+                System.err.println("exception in open: RandomAccessFile(file, access_mode)");
                 e.printStackTrace();
                 return Errors.ENOENT;
             }
+
+            // version validation, check local and remote version diff
+
+            // Store information in local cache File (instantiated before)
 
             int intFD;
             synchronized (lock) {
@@ -271,16 +296,22 @@ class Proxy {
         }
     }
 
+    private static String get_cache_path(String path) {
+        StringBuilder sb = new StringBuilder(cache_dir);
+        sb.append(new StringBuilder(path));
+        return sb.toString();
+    }
+
     public static void main(String[] args) throws IOException {
         // System.out.println("Hello World");
 
         String serverip = args[0];
         int port = Integer.parseInt(args[1]);
-        String cache_dir = args[2];
-        int cache_size = Integer.parseInt(args[3]);
+        cache_dir = args[2];
+        cache_size = Integer.parseInt(args[3]);
 
         server_name = "//" + serverip + ":" + port + "/peizhaolServer";
-
+        cache = new Cache(cache_dir, cache_size);
         try {
             // Look up reference in registry
             srv = (RemoteOps) Naming.lookup(server_name);

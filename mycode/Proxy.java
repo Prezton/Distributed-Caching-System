@@ -77,21 +77,58 @@ class Proxy {
                 if ((o == OpenOption.READ) || (o == OpenOption.WRITE)) {
                     return Errors.ENOENT;
                 }
+                // file does not exist on server and mode is create or create_new, Server needs to create file
+                if (!is_dir) {
+                    try {
+                        srv.create_file(path);
+                    } catch (RemoteException e) {
+                        System.err.println("srv.create_file(path) fail");
+                        e.printStackTrace();
+                    }
+                }
             }
+
             RandomAccessFile raf;
-            FileInfo fileinfo = new FileInfo();
-            fileinfo.is_dir = is_dir;
-            fileinfo.is_existed = is_existed;
-
-
+            FileInfo fileinfo = null;
             // Instantiate a file corresponding to cache_path
             String cache_path = get_cache_path(path);
-            File file = new File(cache_path);
 
             try {
-                if (!fileinfo.is_dir) {
-                    raf = new RandomAccessFile(file, access_mode);
-                    fileinfo.raf = raf;
+                if (!is_dir) {
+                    int local_version = cache.get_local_version(cache_path);
+                    // version validation, check local and remote version diff
+                    if (local_version != remote_version_num) {
+                        // Get from remote server only if local version does not match
+                        byte[] received_file = null;
+                        try {
+                            received_file = srv.get_file(path);
+                        } catch (RemoteException e) {
+                            System.err.println("srv.get_file remote exception");
+                            e.printStackTrace();
+                        }
+                        raf = new RandomAccessFile(cache_path, access_mode);
+                        try {
+                            raf.write(received_file);
+                        } catch (IOException e) {
+                            System.err.println("raf.write(received_file) IO Exception");
+                            e.printStackTrace();
+                        }
+                        // Save to local cache
+                        fileinfo = new FileInfo();
+                        fileinfo.raf = raf;
+                        fileinfo.is_existed = is_existed;
+                        fileinfo.is_dir = is_dir;
+                        fileinfo.version = remote_version_num;
+                        fileinfo.path = cache_path;
+
+                        // Store information in local cache
+                        cache.add_file(fileinfo);
+                    } else {
+                        // Get from local cache
+                        fileinfo = cache.get_local_file_info(cache_path);
+                        raf = new RandomAccessFile(fileinfo.path, access_mode);
+                        fileinfo.raf = raf;
+                    }
                 } else {
                     fileinfo.raf = null;
                 }
@@ -101,9 +138,8 @@ class Proxy {
                 return Errors.ENOENT;
             }
 
-            // version validation, check local and remote version diff
 
-            // Store information in local cache File (instantiated before)
+
 
             int intFD;
             synchronized (lock) {

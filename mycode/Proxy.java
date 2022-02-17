@@ -80,6 +80,7 @@ class Proxy {
                 // file does not exist on server and mode is create or create_new, Server needs to create file
                 if (!is_dir) {
                     try {
+                        System.err.println("File not on server, create it! now remote ver num is: " + remote_version_num);
                         srv.create_file(path);
                     } catch (RemoteException e) {
                         System.err.println("srv.create_file(path) fail");
@@ -98,7 +99,8 @@ class Proxy {
                     int local_version = cache.get_local_version(cache_path);
                     // version validation, check local and remote version diff
                     if (local_version != remote_version_num) {
-                        // Get from remote server only if local version does not match
+                        System.err.println(path + " Getting from remote server!");
+                        // Get from remote server if local version does not match or local has no correct file
                         byte[] received_file = null;
                         try {
                             received_file = srv.get_file(path);
@@ -124,6 +126,7 @@ class Proxy {
                         // Store information in local cache
                         cache.add_file(fileinfo);
                     } else {
+                        System.err.println(path + " Getting from local cache!");
                         // Get from local cache
                         fileinfo = cache.get_local_file_info(cache_path);
                         raf = new RandomAccessFile(fileinfo.path, access_mode);

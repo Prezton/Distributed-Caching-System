@@ -1,4 +1,5 @@
 import java.util.*;
+import java.io.*;
 
 public class Cache {
 
@@ -15,28 +16,60 @@ public class Cache {
     /**
      * @brief get version id
      * @param[in] path String path to check
-     * @return 0 if not in cache, otherwise version num
+     * @return -1 if not in cache, otherwise version num
      */
     public int get_local_version(String path) {
         if (path_file_map.containsKey(path)) {
             return (path_file_map.get(path)).version;
         }
-        // while (itr.hasNext()) {
-        //     FileInfo current_fileinfo = itr.next();
-        //     if (current_fileinfo.path.equals(path)) {
-        //         return current_fileinfo.version;
-        //     }
-        // }
-        return 0;
+
+        return -1;
     }
 
     /**
      * @brief add file to cache mapping and cache line
      * @param fileinfo file information to add
      */
-    public void add_file(FileInfo fileinfo) {
-        cache_line.add(fileinfo);
-        path_file_map.put(fileinfo.path, fileinfo);
+    public synchronized void add_file(FileInfo fileinfo) {
+        String cache_path = fileinfo.path;
+        if (!path_file_map.containsKey(cache_path)) {
+            // Not in cache yet
+            cache_line.add(fileinfo);
+            path_file_map.put(fileinfo.path, fileinfo);
+        } else {
+            // Already in cache, remote old one and add new one
+            update_file(fileinfo);
+        }
+    }
+
+    /**
+     * @brief remove existing file in LinkedList and HashMap
+     * @param cache_path file path to be removed
+     */
+    public synchronized void remove_file(String cache_path) {
+        while (itr.hasNext()) {
+            FileInfo current_fileinfo = itr.next();
+            if (current_fileinfo.path.equals(cache_path)) {
+                cache_line.remove(cache_path);
+                File file = new File(cache_path);
+                file.delete();
+            }
+        }
+    }
+
+    /**
+     * @brief update existing fileinfo in LinkedList and HashMap
+     * @param fileinfo file information to update
+     */
+    private void update_file(FileInfo fileinfo) {
+        String cache_path = fileinfo.path;
+        FileInfo old_fileinfo = path_file_map.get(cache_path);
+        assert(old_fileinfo.version != fileinfo.version);
+
+        // Overwrite old path-fileinfo map
+        path_file_map.put(cache_path, fileinfo);
+        remove_file(cache_path);
+
     }
 
     /**

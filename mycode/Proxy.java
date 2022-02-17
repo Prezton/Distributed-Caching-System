@@ -14,6 +14,8 @@ class Proxy {
     private static Map<Integer, FileInfo> fd_file_map = new HashMap<Integer, FileInfo>();
     private static int fd_count = 0;
     private static final Object lock = new Object();
+    // Special lock used for cache operations
+    private static final Object cache_lock = new Object();
     private static String server_name;
     private static RemoteOps srv;
     private static String cache_dir;
@@ -101,30 +103,19 @@ class Proxy {
                     if (local_version != remote_version_num) {
                         System.err.println(path + " Getting from remote server!");
                         // Get from remote server if local version does not match or local has no correct file
-                        byte[] received_file = null;
-                        try {
-                            received_file = srv.get_file(path);
-                        } catch (RemoteException e) {
-                            System.err.println("srv.get_file remote exception");
-                            e.printStackTrace();
-                        }
-                        raf = new RandomAccessFile(cache_path, access_mode);
-                        try {
-                            raf.write(received_file);
-                        } catch (IOException e) {
-                            System.err.println("raf.write(received_file) IO Exception");
-                            e.printStackTrace();
-                        }
+                        byte[] received_file = fetch_file(path);
+                        // Save file to cache_dir
+                        save_file_locally(cache_path, received_file);
                         // Save to local cache
+                        raf = new RandomAccessFile(cache_path, access_mode);
                         fileinfo = new FileInfo();
                         fileinfo.raf = raf;
                         fileinfo.is_existed = is_existed;
                         fileinfo.is_dir = is_dir;
                         fileinfo.version = remote_version_num;
                         fileinfo.path = cache_path;
-
                         // Store information in local cache
-                        cache.add_file(fileinfo);
+                        cache.add_to_cacheline(fileinfo);
                     } else {
                         System.err.println(path + " Getting from local cache!");
                         // Get from local cache
@@ -210,7 +201,7 @@ class Proxy {
             try {
                 raf.write(buf);
             } catch (IOException e) {
-                System.err.println("exception in raf.write");
+                System.err.println("Proxy: Exception in write");
                 e.printStackTrace();
                 return Errors.EBADF;
             }
@@ -327,6 +318,39 @@ class Proxy {
             return;
         }
 
+        /**
+        * @brief Get file from server
+        * @param path remote file path on server
+        * @return an array of file bytes
+        */
+        private byte[] fetch_file(String path) {
+            byte[] received_file = null;
+            try {
+                received_file = srv.get_file(path);
+            } catch (RemoteException e) {
+                System.err.println("Proxy: fet_file Exception");
+                e.printStackTrace();
+            }
+            return received_file;
+        }
+
+        /**
+        * @brief create file on local cache directory
+        * @param cache_path path to store the file
+        * @param received_file received_file from server
+        */
+        private void save_file_locally(String cache_path, byte[] received_file) {
+            RandomAccessFile tmp;
+            try {
+                tmp = new RandomAccessFile(cache_path, "rw");
+                tmp.write(received_file);
+                tmp.close();
+            } catch (IOException e) {
+                System.err.println("Proxy: save_file_locally exception");
+                e.printStackTrace();
+            }
+        }
+
     }
     
     private static class FileHandlingFactory implements FileHandlingMaking {
@@ -337,6 +361,7 @@ class Proxy {
 
     private static String get_cache_path(String path) {
         StringBuilder sb = new StringBuilder(cache_dir);
+        sb.append("/");
         sb.append(new StringBuilder(path));
         return sb.toString();
     }
@@ -355,6 +380,7 @@ class Proxy {
             // Look up reference in registry
             srv = (RemoteOps) Naming.lookup(server_name);
         } catch (NotBoundException e) {
+            System.err.println("Exception in Proxy main");
             e.printStackTrace();
         }
 

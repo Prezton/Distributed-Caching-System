@@ -5,11 +5,12 @@ import java.util.*;
 import java.rmi.*;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
+import java.util.concurrent.*;
 
 public class Server extends UnicastRemoteObject implements RemoteOps{
 
 
-    private static Map<String, Integer> path_version_map = new HashMap<String, Integer>();
+    private static Map<String, Integer> path_version_map = new ConcurrentHashMap<String, Integer>();
     private static String rootdir;
 
     // UnicastRemoteObject Instantiate a Server
@@ -19,10 +20,26 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         super(0);
     }
 
+    /**
+     * @brief create file on server, used for non-existed and non-directory file
+     * @param path String path to create
+     */
+    public void create_file(String path) throws RemoteException {
+        String remote_path = get_remote_path(path);
+        File file = new File(path);
+        try {
+            file.createNewFile();
+        } catch (IOException e) {
+            System.err.println("server file.createNewFile fail");
+            e.printStackTrace();
+        }
+        path_version_map.put(remote_path, 1);
+    }
+
 
     /**
      * @brief check if path in cache
-     * @param[in] path String path to check
+     * @param path String path to check
      * @return 0 if not in cache, otherwise version num
      */
     public Reply_FileInfo get_file_info(String path) throws RemoteException {
@@ -37,8 +54,8 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         reply_fileinfo.is_dir = is_dir;
         // Get version id
         if (is_existed) {
-            set_default_version_absent(path);
-            reply_fileinfo.version = path_version_map.get(path);
+            set_default_version_absent(remote_path);
+            reply_fileinfo.version = path_version_map.get(remote_path);
             long file_size = file.length();
             reply_fileinfo.file_size = file_size;
         }
@@ -46,6 +63,12 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         return reply_fileinfo;
     }
 
+    /**
+     * @brief get the file from remote server
+     * @param path String path of the file
+     * @prerequisite path is not referred to non-exist file or directory
+     * @return an array of bytes representing the file
+     */
     public byte[] get_file(String path) throws RemoteException {
         String remote_path = get_remote_path(path);
         File file = new File(remote_path);
@@ -67,12 +90,13 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
 
     private static String get_remote_path(String path) {
         StringBuilder sb = new StringBuilder(rootdir);
+        sb.append("/");
         sb.append(new StringBuilder(path));
         return sb.toString();
     }
     /**
      * @brief if the file is not in version map, set it to 1, the file must exist!!!
-     * @param[in] path String path to check
+     * @param path String path to check
      */
     private void set_default_version_absent(String path) throws RemoteException {
         if (!path_version_map.containsKey(path)) {

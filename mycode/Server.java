@@ -17,7 +17,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
     // listen and wait for a client
     // and create a thread for each client
     public Server() throws RemoteException {
-        super(0);
+        super();
     }
 
     /**
@@ -25,15 +25,17 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      * @param path String path to create
      */
     public void create_file(String path) throws RemoteException {
+        System.err.println("Server create_file()");
         String remote_path = get_remote_path(path);
-        File file = new File(path);
+        File file = new File(remote_path);
         try {
             file.createNewFile();
+            path_version_map.put(remote_path, 1);
+
         } catch (IOException e) {
             System.err.println("server file.createNewFile fail");
             e.printStackTrace();
         }
-        path_version_map.put(remote_path, 1);
     }
 
 
@@ -43,6 +45,8 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      * @return 0 if not in cache, otherwise version num
      */
     public Reply_FileInfo get_file_info(String path) throws RemoteException {
+        System.err.println("Server get_file_info()");
+
         String remote_path = get_remote_path(path);
         File file = new File(remote_path);
         Reply_FileInfo reply_fileinfo = new Reply_FileInfo();
@@ -58,6 +62,8 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
             reply_fileinfo.version = path_version_map.get(remote_path);
             long file_size = file.length();
             reply_fileinfo.file_size = file_size;
+        } else {
+            System.err.println("Server: This fileinfo is incomplete due to non-existed");
         }
 
         return reply_fileinfo;
@@ -70,6 +76,8 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      * @return an array of bytes representing the file
      */
     public byte[] get_file(String path) throws RemoteException {
+        System.err.println("Server get_file()");
+
         String remote_path = get_remote_path(path);
         File file = new File(remote_path);
         assert(file.exists());
@@ -89,10 +97,18 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
     }
 
     private static String get_remote_path(String path) {
+        
         StringBuilder sb = new StringBuilder(rootdir);
         sb.append("/");
         sb.append(new StringBuilder(path));
-        return sb.toString();
+        String cano_path = null;
+        try {
+            cano_path = (new File(sb.toString())).getCanonicalPath();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return cano_path;
     }
     /**
      * @brief if the file is not in version map, set it to 1, the file must exist!!!
@@ -107,36 +123,16 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
     public static void main(String[] args) {
         int port = Integer.parseInt(args[0]);
         rootdir = args[1]; 
-        Server server = null;
 
-        String server_name = "peizhaolServer";
+        String server_name = "//" + "127.0.0.1" + ":" + port + "/peizhaolServer";
         try {
+            Server server = new Server();
             LocateRegistry.createRegistry(port);
-
-        } catch(RemoteException e1) {
-            System.err.println("createRegistry incurred an exception in Server main");
-            e1.printStackTrace();
-        }
-
-        try {
-            server = new Server();
-        } catch (RemoteException e) {
-            System.err.println("Server instantiate incurred an exception in Server main");
-            e.printStackTrace();
-        }
-
-        try {
-            if (server == null) {
-                System.err.println("Server instantiate failed: null server");
-            }
             Naming.rebind(server_name, server);
-        } catch (MalformedURLException e) {
-            System.err.println("rebind incurred an exception in Server main");
-            e.printStackTrace();
-        } catch (RemoteException e2) {
-            System.err.println("rebind incurred an exception in Server main");
-            e2.printStackTrace();
 
+        } catch(Exception e) {
+            System.err.println("An exception in Server main!");
+            e.printStackTrace();
         }
 
 

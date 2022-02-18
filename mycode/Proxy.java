@@ -99,8 +99,13 @@ class Proxy {
             try {
                 if (!is_dir) {
                     int local_version = cache.get_local_version(cache_path);
+                    boolean in_cache;
+                    synchronized (cache_lock) {
+                        in_cache = cache.contains_file(cache_path);
+                    }
                     // version validation, check local and remote version diff
-                    if (!cache.contains_file(cache_path)) {
+                    if (!in_cache) {
+                        // Have a problem here for second access on originally non-exsited file! 0 (local ver) and 1 (remote ver)
                         System.err.println(path + " Getting from remote server!, local_ver: " + local_version + "remote ver: " + remote_version_num);
                         // Get from remote server if local version does not match or local has no correct file
                         byte[] received_file = fetch_file(path);
@@ -115,11 +120,17 @@ class Proxy {
                         fileinfo.version = remote_version_num;
                         fileinfo.path = cache_path;
                         // Store information in local cache
-                        cache.add_to_cacheline(fileinfo);
+                        synchronized (cache_lock) {
+                            cache.add_to_cacheline(fileinfo);
+
+                        }
                     } else {
-                        System.err.println(path + " Getting from local cache!");
+                        System.err.println("Getting from local cache!");
                         // Get from local cache
-                        fileinfo = cache.get_local_file_info(cache_path);
+                        synchronized (cache_lock) {
+                            fileinfo = cache.get_local_file_info(cache_path);
+                        }
+                        assert(fileinfo != null);
                         raf = new RandomAccessFile(fileinfo.path, access_mode);
                         fileinfo.raf = raf;
                     }
@@ -372,7 +383,6 @@ class Proxy {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        System.err.println("path is: " + cano_path);
         return cano_path;
     }
 

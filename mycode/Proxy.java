@@ -100,8 +100,8 @@ class Proxy {
                 if (!is_dir) {
                     int local_version = cache.get_local_version(cache_path);
                     // version validation, check local and remote version diff
-                    if (local_version != remote_version_num) {
-                        System.err.println(path + " Getting from remote server!");
+                    if (!cache.contains_file(cache_path)) {
+                        System.err.println(path + " Getting from remote server!, local_ver: " + local_version + "remote ver: " + remote_version_num);
                         // Get from remote server if local version does not match or local has no correct file
                         byte[] received_file = fetch_file(path);
                         // Save file to cache_dir
@@ -324,6 +324,7 @@ class Proxy {
         * @return an array of file bytes
         */
         private byte[] fetch_file(String path) {
+            System.err.println("Proxy fetch_file()");
             byte[] received_file = null;
             try {
                 received_file = srv.get_file(path);
@@ -340,6 +341,8 @@ class Proxy {
         * @param received_file received_file from server
         */
         private void save_file_locally(String cache_path, byte[] received_file) {
+            System.err.println("Proxy save_file_locally()");
+
             RandomAccessFile tmp;
             try {
                 tmp = new RandomAccessFile(cache_path, "rw");
@@ -363,7 +366,14 @@ class Proxy {
         StringBuilder sb = new StringBuilder(cache_dir);
         sb.append("/");
         sb.append(new StringBuilder(path));
-        return sb.toString();
+        String cano_path = null;
+        try {
+            cano_path = (new File(sb.toString())).getCanonicalPath();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        System.err.println("path is: " + cano_path);
+        return cano_path;
     }
 
     public static void main(String[] args) throws IOException {

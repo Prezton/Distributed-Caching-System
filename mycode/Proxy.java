@@ -98,10 +98,11 @@ class Proxy {
 
             try {
                 if (!is_dir) {
-                    int local_version = cache.get_local_version(cache_path);
+                    int local_version;
                     boolean in_cache;
                     synchronized (cache_lock) {
                         in_cache = cache.contains_file(cache_path);
+                        local_version = cache.get_local_version(cache_path);
                     }
                     // version validation, check local and remote version diff
                     if (!in_cache) {
@@ -352,7 +353,7 @@ class Proxy {
         * @param received_file received_file from server
         */
         private void save_file_locally(String cache_path, byte[] received_file) {
-            System.err.println("Proxy save_file_locally()");
+            System.err.println("Proxy save_file_locally(), path: " + cache_path);
 
             RandomAccessFile tmp;
             try {

@@ -25,7 +25,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      * @param path String path to create
      */
     public void create_file(String path) throws RemoteException {
-        System.err.println("Server create_file()");
+        System.err.println(path + " Server create_file()");
         String remote_path = get_remote_path(path);
         File file = new File(remote_path);
         try {
@@ -38,6 +38,35 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         }
     }
 
+    /**
+     * @brief upload file from Proxy cache to servers
+     * @param path String path to upload
+     * @param sent_file file to be uploaded
+     */
+    public synchronized void upload_file(String path, byte[] uploaded_file) throws RemoteException {
+        System.err.println(path + " Server upload_file()");
+        String remote_path = get_remote_path(path);
+        File file = new File(remote_path);
+
+        RandomAccessFile raf;
+        try {
+            raf = new RandomAccessFile(file, "rw");
+            raf.write(uploaded_file);
+            raf.close();
+        } catch (Exception e) {
+            System.err.println("Server upload_file() fail");
+            e.printStackTrace();
+        }
+        // Update version map
+        if (path_version_map.containsKey(remote_path)) {
+            path_version_map.put(remote_path, path_version_map.get(remote_path) + 1);
+        } else {
+            System.err.println("EMPTY VER SHOULD NOT HAPPEN ON UPLOADED FILE!");
+            path_version_map.put(remote_path, 1);
+        }
+
+    }
+
 
     /**
      * @brief check if path in cache
@@ -45,7 +74,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      * @return 0 if not in cache, otherwise version num
      */
     public Reply_FileInfo get_file_info(String path) throws RemoteException {
-        System.err.println("Server get_file_info()");
+        System.err.println(path + " Server get_file_info()");
 
         String remote_path = get_remote_path(path);
         File file = new File(remote_path);
@@ -56,10 +85,11 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         reply_fileinfo.is_existed = is_existed;
         boolean is_dir = file.isDirectory();
         reply_fileinfo.is_dir = is_dir;
+
+        set_default_version_absent(remote_path);
+        reply_fileinfo.version = path_version_map.get(remote_path);
         // Get version id
         if (is_existed) {
-            set_default_version_absent(remote_path);
-            reply_fileinfo.version = path_version_map.get(remote_path);
             long file_size = file.length();
             reply_fileinfo.file_size = file_size;
         } else {
@@ -76,7 +106,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      * @return an array of bytes representing the file
      */
     public byte[] get_file(String path) throws RemoteException {
-        System.err.println("Server get_file()");
+        System.err.println(path + " Server get_file()");
 
         String remote_path = get_remote_path(path);
         File file = new File(remote_path);

@@ -80,15 +80,15 @@ class Proxy {
                     return Errors.ENOENT;
                 }
                 // file does not exist on server and mode is create or create_new, Server needs to create file
-                if (!is_dir) {
-                    try {
-                        System.err.println("File not on server, create it! now remote ver num is: " + remote_version_num);
-                        srv.create_file(path);
-                    } catch (RemoteException e) {
-                        System.err.println("srv.create_file(path) fail");
-                        e.printStackTrace();
-                    }
-                }
+                // if (!is_dir) {
+                //     try {
+                //         System.err.println("File not on server, create it! now remote ver num is: " + remote_version_num);
+                //         srv.create_file(path);
+                //     } catch (RemoteException e) {
+                //         System.err.println("srv.create_file(path) fail");
+                //         e.printStackTrace();
+                //     }
+                // }
             }
 
             RandomAccessFile raf;
@@ -109,9 +109,16 @@ class Proxy {
                         // Have a problem here for second access on originally non-exsited file! 0 (local ver) and 1 (remote ver)
                         System.err.println(path + " Getting from remote server!, local_ver: " + local_version + "remote ver: " + remote_version_num);
                         // Get from remote server if local version does not match or local has no correct file
-                        byte[] received_file = fetch_file(path);
-                        // Save file to cache_dir
-                        save_file_locally(cache_path, received_file);
+                        if (is_existed) {
+                            // If the file is on server, just fetch it.
+                            byte[] received_file = fetch_file(path);
+                            // Save file to cache_dir
+                            save_file_locally(cache_path, received_file);
+                        } else {
+                            // If file not on server, create locally first.
+                            create_file_locally(cache_path);
+                        }
+
                         // Save to local cache
                         raf = new RandomAccessFile(cache_path, access_mode);
                         fileinfo = new FileInfo();
@@ -345,6 +352,17 @@ class Proxy {
                 e.printStackTrace();
             }
             return received_file;
+        }
+
+        private void create_file_locally(String cache_path) {
+            System.err.println("Proxy create_file_locally(), path: " + cache_path);
+            File file = new File(cache_path);
+            try {
+                file.createNewFile();
+            } catch (IOException e) {
+                System.err.println("Proxy file.createNewFile fail");
+                e.printStackTrace();
+            }
         }
 
         /**

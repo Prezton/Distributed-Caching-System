@@ -105,7 +105,7 @@ class Proxy {
                         local_version = cache.get_local_version(cache_path);
                     }
                     // version validation, check local and remote version diff
-                    if (!in_cache) {
+                    if ((!in_cache) || (local_version != remote_version_num)) {
                         // Have a problem here for second access on originally non-exsited file! 0 (local ver) and 1 (remote ver)
                         System.err.println(path + " Getting from remote server!, local_ver: " + local_version + "remote ver: " + remote_version_num);
                         // Get from remote server if local version does not match or local has no correct file
@@ -117,6 +117,9 @@ class Proxy {
                         } else {
                             // If file not on server, create locally first.
                             create_file_locally(cache_path);
+                            // Remote ver id is not assigned if file not on remote server
+                            // which should be 0 by default for Integer, so make it 1 to align
+                            // with upload_file() on server.
                         }
 
                         // Save to local cache
@@ -127,6 +130,8 @@ class Proxy {
                         fileinfo.is_dir = is_dir;
                         fileinfo.version = remote_version_num;
                         fileinfo.path = cache_path;
+                        fileinfo.orig_path = path;
+
                         // Store information in local cache
                         synchronized (cache_lock) {
                             cache.add_to_cacheline(fileinfo);
@@ -142,7 +147,15 @@ class Proxy {
                         raf = new RandomAccessFile(fileinfo.path, access_mode);
                         fileinfo.raf = raf;
                     }
+                    // Store access_mode for close() to decide whether forward update back to Server.
+                    fileinfo.access_mode = access_mode;
                 } else {
+                    fileinfo = new FileInfo();
+                    fileinfo.is_existed = is_existed;
+                    fileinfo.is_dir = is_dir;
+                    fileinfo.version = remote_version_num;
+                    fileinfo.path = cache_path;
+                    fileinfo.orig_path = path;
                     fileinfo.raf = null;
                 }
             } catch (FileNotFoundException e) {
@@ -167,7 +180,7 @@ class Proxy {
         }
 
         public synchronized int close( int fd ) {
-             System.err.println("close");
+            System.err.println("close");
             if (!fd_file_map.containsKey(fd)) {
                 return Errors.EBADF;
             }
@@ -181,13 +194,28 @@ class Proxy {
                 return 0;
             }
             if (raf.equals(null)) {
-                System.err.println("close: null raf! STH WRONG!");
+                System.err.println("Proxy close() null raf! STH WRONG!");
                 if (fd_file_map.containsKey(fd)) {
                     fd_file_map.remove(fd);
                     return 0;
                 }
 
             }
+            // File has been overwritten
+            if (fileinfo.access_mode.equals("rw")) {
+                try {
+                    synchronized (cache_lock) {
+                        cache.update_file_version(fileinfo);
+                    }
+                    byte[] sent_file = new byte[(int)(raf.length())];
+                    raf.read(sent_file);
+                    srv.upload_file(fileinfo.orig_path, sent_file);
+                } catch (Exception e) {
+                    System.err.println("Proxy close(), sent file failed");
+                    e.printStackTrace();
+                }
+            }
+
             try {
                 raf.close();
                 fd_file_map.remove(fd);

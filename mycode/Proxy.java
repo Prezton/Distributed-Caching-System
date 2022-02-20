@@ -208,8 +208,9 @@ class Proxy {
                         cache.update_file_version(fileinfo.path);
                     }
                     byte[] sent_file = new byte[(int)(raf.length())];
+                    raf.seek(0);
                     int result = raf.read(sent_file);
-                    System.err.println("bytes read: " + result);
+                    assert(result != -1);
                     srv.upload_file(fileinfo.orig_path, sent_file);
                 } catch (Exception e) {
                     System.err.println("Proxy close(), sent file failed");

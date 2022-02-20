@@ -9,6 +9,10 @@ public class FileInfo{
     public boolean is_dir;
     public boolean is_existed;
     public int version;
+    public int file_size;
+    public String path;
+    public String orig_path;
+    public String access_mode;
     public FileInfo() {
 
     }

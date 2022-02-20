@@ -80,15 +80,15 @@ class Proxy {
                     return Errors.ENOENT;
                 }
                 // file does not exist on server and mode is create or create_new, Server needs to create file
-                // if (!is_dir) {
-                //     try {
-                //         System.err.println("File not on server, create it! now remote ver num is: " + remote_version_num);
-                //         srv.create_file(path);
-                //     } catch (RemoteException e) {
-                //         System.err.println("srv.create_file(path) fail");
-                //         e.printStackTrace();
-                //     }
-                // }
+                if (!is_dir) {
+                    try {
+                        System.err.println("File not on server, create it! now remote ver num is: " + remote_version_num);
+                        srv.create_file(path);
+                    } catch (RemoteException e) {
+                        System.err.println("srv.create_file(path) fail");
+                        e.printStackTrace();
+                    }
+                }
             }
 
             RandomAccessFile raf;
@@ -109,18 +109,11 @@ class Proxy {
                         // Have a problem here for second access on originally non-exsited file! 0 (local ver) and 1 (remote ver)
                         System.err.println(path + " Getting from remote server!, local_ver: " + local_version + "remote ver: " + remote_version_num);
                         // Get from remote server if local version does not match or local has no correct file
-                        if (is_existed) {
-                            // If the file is on server, just fetch it.
-                            byte[] received_file = fetch_file(path);
-                            // Save file to cache_dir
-                            save_file_locally(cache_path, received_file);
-                        } else {
-                            // If file not on server, create locally first.
-                            create_file_locally(cache_path);
-                            // Remote ver id is not assigned if file not on remote server
-                            // which should be 0 by default for Integer, so make it 1 to align
-                            // with upload_file() on server.
-                        }
+
+                        // If the file is on server, just fetch it.
+                        byte[] received_file = fetch_file(path);
+                        // Save file to cache_dir
+                        save_file_locally(cache_path, received_file);
 
                         // Save to local cache
                         raf = new RandomAccessFile(cache_path, access_mode);
@@ -134,18 +127,25 @@ class Proxy {
 
                         // Store information in local cache
                         synchronized (cache_lock) {
-                            cache.add_to_cacheline(fileinfo);
+                            cache.add_to_cacheline(new CachedFileInfo(fileinfo));
 
                         }
                     } else {
                         System.err.println("Getting from local cache!");
                         // Get from local cache
+                        CachedFileInfo cached_fileinfo;
                         synchronized (cache_lock) {
-                            fileinfo = cache.get_local_file_info(cache_path);
+                            cached_fileinfo = cache.get_local_file_info(cache_path);
                         }
-                        assert(fileinfo != null);
-                        raf = new RandomAccessFile(fileinfo.path, access_mode);
+                        assert(cached_fileinfo != null);
+                        raf = new RandomAccessFile(cached_fileinfo.path, access_mode);
+                        fileinfo = new FileInfo();
                         fileinfo.raf = raf;
+                        fileinfo.is_existed = is_existed;
+                        fileinfo.is_dir = is_dir;
+                        fileinfo.version = local_version;
+                        fileinfo.path = cache_path;
+                        fileinfo.orig_path = path;
                     }
                     // Store access_mode for close() to decide whether forward update back to Server.
                     fileinfo.access_mode = access_mode;
@@ -205,10 +205,11 @@ class Proxy {
             if (fileinfo.access_mode.equals("rw")) {
                 try {
                     synchronized (cache_lock) {
-                        cache.update_file_version(fileinfo);
+                        cache.update_file_version(fileinfo.path);
                     }
                     byte[] sent_file = new byte[(int)(raf.length())];
-                    raf.read(sent_file);
+                    int result = raf.read(sent_file);
+                    System.err.println("bytes read: " + result);
                     srv.upload_file(fileinfo.orig_path, sent_file);
                 } catch (Exception e) {
                     System.err.println("Proxy close(), sent file failed");
@@ -228,7 +229,7 @@ class Proxy {
         }
 
         public synchronized long write( int fd, byte[] buf ) {
-            System.err.println("write");
+            System.err.println("write, fd:" + fd);
 
             if (!fd_file_map.containsKey(fd)) {
                 return Errors.EBADF;
@@ -257,7 +258,7 @@ class Proxy {
         }
 
         public long read( int fd, byte[] buf ) {
-            System.err.println("read");
+            System.err.println("read, fd:" + fd);
             if (!fd_file_map.containsKey(fd)) {
                 return Errors.EBADF;
             }

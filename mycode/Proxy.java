@@ -117,18 +117,10 @@ class Proxy {
 
                         // Save to local cache
                         raf = new RandomAccessFile(cache_path, access_mode);
-                        fileinfo = new FileInfo();
-                        fileinfo.raf = raf;
-                        fileinfo.is_existed = is_existed;
-                        fileinfo.is_dir = is_dir;
-                        fileinfo.version = remote_version_num;
-                        fileinfo.path = cache_path;
-                        fileinfo.orig_path = path;
-
+                        fileinfo = set_fileinfo_value(is_existed, is_dir, remote_version_num, cache_path, path, raf);
                         // Store information in local cache
                         synchronized (cache_lock) {
                             cache.add_to_cacheline(new CachedFileInfo(fileinfo));
-
                         }
                     } else {
                         System.err.println("Getting from local cache!");
@@ -139,24 +131,14 @@ class Proxy {
                         }
                         assert(cached_fileinfo != null);
                         raf = new RandomAccessFile(cached_fileinfo.path, access_mode);
-                        fileinfo = new FileInfo();
-                        fileinfo.raf = raf;
-                        fileinfo.is_existed = is_existed;
-                        fileinfo.is_dir = is_dir;
-                        fileinfo.version = local_version;
-                        fileinfo.path = cache_path;
-                        fileinfo.orig_path = path;
+                        fileinfo = set_fileinfo_value(is_existed, is_dir, remote_version_num, cache_path, path, raf);
+
                     }
                     // Store access_mode for close() to decide whether forward update back to Server.
                     fileinfo.access_mode = access_mode;
                 } else {
-                    fileinfo = new FileInfo();
-                    fileinfo.is_existed = is_existed;
-                    fileinfo.is_dir = is_dir;
-                    fileinfo.version = remote_version_num;
-                    fileinfo.path = cache_path;
-                    fileinfo.orig_path = path;
-                    fileinfo.raf = null;
+                    fileinfo = set_fileinfo_value(is_existed, is_dir, remote_version_num, cache_path, path, null);
+
                 }
             } catch (FileNotFoundException e) {
                 System.err.println("exception in open: RandomAccessFile(file, access_mode)");
@@ -422,6 +404,12 @@ class Proxy {
         }
     }
 
+
+    /**
+    * @brief Get local cache path by adding cache directory
+    * @param path original input file path
+    * @return concatenated local cache path
+    */
     private static String get_cache_path(String path) {
         StringBuilder sb = new StringBuilder(cache_dir);
         sb.append("/");
@@ -433,6 +421,23 @@ class Proxy {
             e.printStackTrace();
         }
         return cano_path;
+    }
+
+
+    /**
+    * @brief Set file information in the map
+    * @param ... A series of data defined in FileInfo.java
+    * @return file information class used in fd_file map
+    */
+    private static FileInfo set_fileinfo_value(boolean is_existed, boolean is_dir, int remote_version_num, String cache_path, String path, RandomAccessFile raf) {
+        FileInfo fileinfo = new FileInfo();
+        fileinfo.is_existed = is_existed;
+        fileinfo.is_dir = is_dir;
+        fileinfo.version = remote_version_num;
+        fileinfo.path = cache_path;
+        fileinfo.orig_path = path;
+        fileinfo.raf = raf;
+        return fileinfo;
     }
 
     public static void main(String[] args) throws IOException {

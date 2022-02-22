@@ -5,13 +5,14 @@ import java.rmi.Naming;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.util.*;
+import java.util.concurrent.*;
 
 class Proxy {
 
     /**
      * map between fd and RandomAccessFile Object
      */
-    private static Map<Integer, FileInfo> fd_file_map = new HashMap<Integer, FileInfo>();
+    private static Map<Integer, FileInfo> fd_file_map = new ConcurrentHashMap<Integer, FileInfo>();
     private static int fd_count = 0;
     private static final Object lock = new Object();
     // Special lock used for cache operations
@@ -65,6 +66,7 @@ class Proxy {
             boolean is_dir = reply_fileinfo.is_dir;
             boolean is_existed = reply_fileinfo.is_existed;
             int remote_version_num = reply_fileinfo.version;
+            int remote_file_size = (int)reply_fileinfo.file_size;
 
             if (is_existed) {
                 if (check_existed) {
@@ -109,6 +111,23 @@ class Proxy {
                         // Have a problem here for second access on originally non-exsited file! 0 (local ver) and 1 (remote ver)
                         System.err.println(path + " Getting from remote server!, local_ver: " + local_version + "remote ver: " + remote_version_num);
                         // Get from remote server if local version does not match or local has no correct file
+                        if (remote_file_size > cache_size) {
+                            return Errors.ENOMEM;
+                        }
+
+                        synchronized (cache_lock) {
+                            if (cache.get_cache_remain_size() < remote_file_size) {
+                                boolean is_enough = cache.evict(remote_file_size);
+                                if (!is_enough) {
+                                    return Errors.ENOMEM;
+                                }
+                            }
+                            // If file not latest version, first delete old version file.
+                            if (cache.contains_file(cache_path)) {
+                                cache.remove_file(cache_path);
+                            }
+                        }
+
 
                         // If the file is on server, just fetch it.
                         byte[] received_file = fetch_file(path);
@@ -117,9 +136,10 @@ class Proxy {
 
                         // Save to local cache
                         raf = new RandomAccessFile(cache_path, access_mode);
-                        fileinfo = set_fileinfo_value(is_existed, is_dir, remote_version_num, cache_path, path, raf);
+                        fileinfo = set_fileinfo_value(is_existed, is_dir, remote_version_num, remote_file_size, cache_path, path, raf);
                         // Store information in local cache
                         synchronized (cache_lock) {
+                            // BUG HERE!! MAY DELETE FILE WHICH IS JUST CREATED!
                             cache.add_to_cacheline(new CachedFileInfo(fileinfo));
                         }
                     } else {
@@ -128,16 +148,17 @@ class Proxy {
                         CachedFileInfo cached_fileinfo;
                         synchronized (cache_lock) {
                             cached_fileinfo = cache.get_local_file_info(cache_path);
+                            cache.move_to_end(cached_fileinfo);
                         }
                         assert(cached_fileinfo != null);
                         raf = new RandomAccessFile(cached_fileinfo.path, access_mode);
-                        fileinfo = set_fileinfo_value(is_existed, is_dir, remote_version_num, cache_path, path, raf);
+                        fileinfo = set_fileinfo_value(is_existed, is_dir, remote_version_num, remote_file_size, cache_path, path, raf);
 
                     }
                     // Store access_mode for close() to decide whether forward update back to Server.
                     fileinfo.access_mode = access_mode;
                 } else {
-                    fileinfo = set_fileinfo_value(is_existed, is_dir, remote_version_num, cache_path, path, null);
+                    fileinfo = set_fileinfo_value(is_existed, is_dir, remote_version_num, remote_file_size, cache_path, path, null);
 
                 }
             } catch (FileNotFoundException e) {
@@ -429,11 +450,12 @@ class Proxy {
     * @param ... A series of data defined in FileInfo.java
     * @return file information class used in fd_file map
     */
-    private static FileInfo set_fileinfo_value(boolean is_existed, boolean is_dir, int remote_version_num, String cache_path, String path, RandomAccessFile raf) {
+    private static FileInfo set_fileinfo_value(boolean is_existed, boolean is_dir, int remote_version_num, int remote_file_size, String cache_path, String path, RandomAccessFile raf) {
         FileInfo fileinfo = new FileInfo();
         fileinfo.is_existed = is_existed;
         fileinfo.is_dir = is_dir;
         fileinfo.version = remote_version_num;
+        fileinfo.file_size = remote_file_size;
         fileinfo.path = cache_path;
         fileinfo.orig_path = path;
         fileinfo.raf = raf;

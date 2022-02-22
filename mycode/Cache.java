@@ -4,15 +4,19 @@ import java.util.concurrent.*;
 
 public class Cache {
 
-    private List<CachedFileInfo> cache_line;
-    private Iterator<CachedFileInfo> itr;
+    private LinkedList<CachedFileInfo> cache_line;
     private Map<String, CachedFileInfo> path_file_map;
+    private int current_cache_size;
+    private final int total_cache_size;
 
     public Cache(String cache_dir, int cache_size) {
         cache_line = new LinkedList<CachedFileInfo>();
-        itr = cache_line.iterator();
         path_file_map = new ConcurrentHashMap<String, CachedFileInfo>();
+        total_cache_size = cache_size;
+        current_cache_size = 0;
     }
+
+    public int 
 
     public boolean contains_file(String cache_path) {
         return path_file_map.containsKey(cache_path);
@@ -36,14 +40,15 @@ public class Cache {
      * @param cached_fileinfo file information to add
      */
     public synchronized void add_to_cacheline(CachedFileInfo cached_fileinfo) {
+        System.err.println("Proxy: add_to_cacheline()");
         String cache_path = cached_fileinfo.path;
         if (!path_file_map.containsKey(cache_path)) {
             // Not in cache yet
             cache_line.add(cached_fileinfo);
             path_file_map.put(cached_fileinfo.path, cached_fileinfo);
         } else {
-            // Already in cache, remote old one and add new one
-            System.err.println("test2!!!");
+            // Already in cache, remove old one and add new one
+            System.err.println("Proxy: update cache");
             update_file(cached_fileinfo);
         }
     }
@@ -53,18 +58,41 @@ public class Cache {
     }
 
     /**
-     * @brief remove existing file in LinkedList and HashMap
+     * @brief remove existing file in LinkedList and HashMap, and delete it.
      * @param cache_path file path to be removed
      */
-    public synchronized void remove_file(String cache_path) {
-        while (itr.hasNext()) {
-            CachedFileInfo current_fileinfo = itr.next();
-            if (current_fileinfo.path.equals(cache_path)) {
-                cache_line.remove(cache_path);
-                File file = new File(cache_path);
-                file.delete();
-            }
+    public synchronized boolean remove_file(String cache_path) {
+        assert(path_file_map.containsKey(cache_path));
+        CachedFileInfo cached_fileinfo = path_file_map.get(cache_path);
+        boolean is_removed = cache_line.remove(cached_fileinfo);
+        CachedFileInfo tmp = path_file_map.remove(cache_path);
+        File file = new File(cache_path);
+        file.delete();
+        if (!is_removed || (tmp == null)) {
+            System.err.println("Proxy remove_file: failed to remove CachedFileInfo from list or map" + is_removed + " " + tmp);
+            return false;
         }
+        current_cache_size -= cached_fileinfo.file_size;
+        return true;
+    }
+
+
+    /**
+     * @brief remove existing file in LinkedList and HashMap, and delete it.
+     * @param cached_fileinfo cached_fileinfo to be removed
+     */
+    private synchronized void remove_file_v2(CachedFileInfo cached_fileinfo) {
+        String cache_path = cached_fileinfo.path;
+        boolean is_removed = cache_line.remove(cached_fileinfo);
+        CachedFileInfo tmp = path_file_map.remove(cache_path);
+        File file = new File(cache_path);
+        file.delete();
+        if (!is_removed || (tmp == null)) {
+            System.err.println("Proxy remove_file_v2: failed to remove CachedFileInfo from list or map" + is_removed + " " + tmp);
+            return;
+        }
+        current_cache_size -= cached_fileinfo.file_size;
+
     }
 
     /**
@@ -76,11 +104,48 @@ public class Cache {
         CachedFileInfo old_cached_fileinfo = path_file_map.get(cache_path);
         assert(old_cached_fileinfo.version != cached_fileinfo.version);
 
-        // Overwrite old path-fileinfo map
-        path_file_map.put(cache_path, cached_fileinfo);
-        remove_file(cache_path);
+        remove_file_v2(cached_fileinfo);
         cache_line.add(cached_fileinfo);
+        path_file_map.put(cache_path, cached_fileinfo);
 
+    }
+
+    public void move_to_end(CachedFileInfo cached_fileinfo) {
+        cache_line.remove(cached_fileinfo);
+        cache_line.add(cached_fileinfo);
+    }
+
+    public synchronized boolean evict(long file_size) {
+        Iterator<CachedFileInfo> itr = cache_line.iterator();
+        while (itr.hasNext()) {
+            CachedFileInfo current = itr.next();
+            boolean is_removed = cache_line.remove(current);
+            if (!is_removed) {
+                System.err.println("Cache: evict(), failed to evict the current element in cache_line list");
+            }
+            CachedFileInfo tmp2 = path_file_map.remove(current.path);
+            if (tmp2 == null) {
+                System.err.println("Cache: evict(), failed to evict the first element in path_file_map");
+            }
+            current_cache_size -= current.file_size;
+            if (get_cache_remain_size() >= file_size) {
+                break;
+            }
+        }
+        return (get_cache_remain_size() >= file_size);
+    }
+
+    public long get_cache_remain_size() {
+        return (total_cache_size - current_cache_size);
+    }
+
+    public void traverse_cache() {
+        System.err.println("Start traversal");
+        Iterator<CachedFileInfo> itr = cache_line.iterator();
+        while (itr.hasNext()) {
+            CachedFileInfo current = itr.next();
+            System.err.println("Node: " + current.path);
+        }
     }
 
     /**

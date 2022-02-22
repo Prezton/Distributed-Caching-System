@@ -100,7 +100,10 @@ class Proxy {
             fileinfo = set_fileinfo_value(is_existed, is_dir, remote_version_num, remote_file_size, cache_path, path, raf);
 
             if (!is_dir) {
-                int deal_result = deal(fileinfo, raf, access_mode);
+                int deal_result;
+                synchronized (cache_lock) {
+                    deal_result = deal(fileinfo, raf, access_mode);
+                }
                 if (deal_result == -1) {
                     return Errors.ENOENT;
                 } else if (deal_result == -2) {
@@ -316,7 +319,9 @@ class Proxy {
 
         /**
         * @brief Deal with 3 cases: 1. File not in cache 2. File in cache but not latest 3. File in cache and valid.
-        * @param path remote file path on server
+        * @param fileinfo fileinfo, prefilled with remote reply information
+        * @param raf randomaccessfile for read and write, stored in map at end of this method
+        * @param access_mode access_mode
         * @return an array of file bytes
         */
         private int deal(FileInfo fileinfo, RandomAccessFile raf, String access_mode) {
@@ -326,10 +331,9 @@ class Proxy {
             int remote_file_size = fileinfo.file_size;
             int local_version;
             boolean in_cache;
-            synchronized (cache_lock) {
-                in_cache = cache.contains_file(cache_path);
-                local_version = cache.get_local_version(cache_path);
-            }
+            in_cache = cache.contains_file(cache_path);
+            local_version = cache.get_local_version(cache_path);
+            
             // version validation, check local and remote version diff
             if ((!in_cache) || (local_version != remote_version_num)) {
                 // Have a problem here for second access on originally non-exsited file! 0 (local ver) and 1 (remote ver)
@@ -340,19 +344,18 @@ class Proxy {
                     return -2;
                 }
 
-                synchronized (cache_lock) {
-                    if (cache.get_cache_remain_size() < remote_file_size) {
-                        boolean is_enough = cache.evict(remote_file_size);
-                        if (!is_enough) {
-                            // return Errors.ENOMEM;
-                            return -2;
-                        }
-                    }
-                    // If file not latest version, first delete old version file.
-                    if (cache.contains_file(cache_path)) {
-                        cache.remove_file(cache_path);
+                if (cache.get_cache_remain_size() < remote_file_size) {
+                    boolean is_enough = cache.evict(remote_file_size);
+                    if (!is_enough) {
+                        // return Errors.ENOMEM;
+                        return -2;
                     }
                 }
+                // If file not latest version, first delete old version file.
+                if (cache.contains_file(cache_path)) {
+                    cache.remove_file(cache_path);
+                }
+                
 
 
                 // If the file is on server, just fetch it.
@@ -372,18 +375,16 @@ class Proxy {
                 }
                 fileinfo.raf = raf;
                 // Store information in local cache
-                synchronized (cache_lock) {
                     // BUG HERE!! MAY DELETE FILE WHICH IS JUST CREATED!
-                    cache.add_to_cacheline(new CachedFileInfo(fileinfo));
-                }
+                cache.add_to_cacheline(new CachedFileInfo(fileinfo));
+                
             } else {
                 System.err.println("Getting from local cache!");
                 // Get from local cache
                 CachedFileInfo cached_fileinfo;
-                synchronized (cache_lock) {
-                    cached_fileinfo = cache.get_local_file_info(cache_path);
-                    cache.move_to_end(cached_fileinfo);
-                }
+                cached_fileinfo = cache.get_local_file_info(cache_path);
+                cache.move_to_end(cached_fileinfo);
+                
                 assert(cached_fileinfo != null);
                 try {
                     raf = new RandomAccessFile(cache_path, access_mode);

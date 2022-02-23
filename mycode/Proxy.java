@@ -336,7 +336,6 @@ class Proxy {
             
             // version validation, check local and remote version diff
             if ((!in_cache) || (local_version != remote_version_num)) {
-                // Have a problem here for second access on originally non-exsited file! 0 (local ver) and 1 (remote ver)
                 System.err.println(path + " Getting from remote server!, local_ver: " + local_version + "remote ver: " + remote_version_num);
                 // Get from remote server if local version does not match or local has no correct file
                 if (remote_file_size > cache_size) {
@@ -353,7 +352,7 @@ class Proxy {
                 }
                 // If file not latest version, first delete old version file.
                 if (cache.contains_file(cache_path)) {
-                    cache.remove_file(cache_path);
+                    cache.remove_file(cache_path, remote_version_num);
                 }
                 
 

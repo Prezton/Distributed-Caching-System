@@ -16,8 +16,6 @@ public class Cache {
         current_cache_size = 0;
     }
 
-    public int 
-
     public boolean contains_file(String cache_path) {
         return path_file_map.containsKey(cache_path);
     }
@@ -61,9 +59,10 @@ public class Cache {
      * @brief remove existing file in LinkedList and HashMap, and delete it.
      * @param cache_path file path to be removed
      */
-    public synchronized boolean remove_file(String cache_path) {
+    public synchronized boolean remove_file(String cache_path, int new_version) {
         assert(path_file_map.containsKey(cache_path));
         CachedFileInfo cached_fileinfo = path_file_map.get(cache_path);
+        assert(new_version != cached_fileinfo.version);
         boolean is_removed = cache_line.remove(cached_fileinfo);
         CachedFileInfo tmp = path_file_map.remove(cache_path);
         File file = new File(cache_path);

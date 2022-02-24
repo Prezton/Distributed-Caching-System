@@ -95,6 +95,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         } else {
             System.err.println("Server: This fileinfo is incomplete due to non-existed");
         }
+        reply_fileinfo.path_valid = check_server_path(remote_path);
 
         return reply_fileinfo;
     }
@@ -150,15 +151,24 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         }
     }
 
+    private boolean check_server_path(String remote_path) {
+        return remote_path.contains(rootdir);
+    }
+
     public static void main(String[] args) {
         int port = Integer.parseInt(args[0]);
         rootdir = args[1]; 
 
         String server_name = "//" + "127.0.0.1" + ":" + port + "/peizhaolServer";
+        String server_name2 = "//" + "128.2.13.178" + ":" + 10608 + "/peizhaolServer";
+
         try {
             Server server = new Server();
             LocateRegistry.createRegistry(port);
+            LocateRegistry.createRegistry(10608);
+
             Naming.rebind(server_name, server);
+            Naming.rebind(server_name2, server);
 
         } catch(Exception e) {
             System.err.println("An exception in Server main!");

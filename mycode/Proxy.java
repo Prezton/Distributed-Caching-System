@@ -41,6 +41,14 @@ class Proxy {
 
             String access_mode;
             boolean check_existed = false;
+
+            // If remote path is outside the root dir
+            if (!reply_fileinfo.path_valid) {
+                System.err.println("Remote path outside server rootdir");
+                return Errors.EPERM;
+            }
+
+
             if (o == OpenOption.CREATE) {
                 access_mode = "rw";
                 System.err.println("CREATE");
@@ -422,16 +430,16 @@ class Proxy {
             return received_file;
         }
 
-        private void create_file_locally(String cache_path) {
-            System.err.println("Proxy create_file_locally(), path: " + cache_path);
-            File file = new File(cache_path);
-            try {
-                file.createNewFile();
-            } catch (IOException e) {
-                System.err.println("Proxy file.createNewFile fail");
-                e.printStackTrace();
-            }
-        }
+        // private void create_file_locally(String cache_path) {
+        //     System.err.println("Proxy create_file_locally(), path: " + cache_path);
+        //     File file = new File(cache_path);
+        //     try {
+        //         file.createNewFile();
+        //     } catch (IOException e) {
+        //         System.err.println("Proxy file.createNewFile fail");
+        //         e.printStackTrace();
+        //     }
+        // }
 
         /**
         * @brief create file on local cache directory
@@ -460,6 +468,9 @@ class Proxy {
         }
     }
 
+    private static boolean check_path(String cache_path) {
+        return cache_path.contains(cache_dir);
+    }
 
     /**
     * @brief Get local cache path by adding cache directory

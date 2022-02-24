@@ -155,7 +155,7 @@ class Proxy {
             if (fileinfo.access_mode.equals("rw")) {
                 try {
                     synchronized (cache_lock) {
-                        cache.update_file_version(fileinfo.path);
+                        cache.update_version(fileinfo.path);
                     }
                     byte[] sent_file = new byte[(int)(raf.length())];
                     raf.seek(0);
@@ -342,7 +342,12 @@ class Proxy {
                     // return Errors.ENOMEM;
                     return -2;
                 }
-
+                // If file not latest version, first delete old version file.
+                if (cache.contains_file(cache_path)) {
+                    cache.remove_file(cache_path, remote_version_num);
+                }
+                
+                System.err.println("remain size: " + cache.get_cache_remain_size() + "remote file size: " + remote_file_size);
                 if (cache.get_cache_remain_size() < remote_file_size) {
                     boolean is_enough = cache.evict(remote_file_size);
                     if (!is_enough) {
@@ -350,10 +355,7 @@ class Proxy {
                         return -2;
                     }
                 }
-                // If file not latest version, first delete old version file.
-                if (cache.contains_file(cache_path)) {
-                    cache.remove_file(cache_path, remote_version_num);
-                }
+
                 
 
 
@@ -376,6 +378,7 @@ class Proxy {
                 // Store information in local cache
                     // BUG HERE!! MAY DELETE FILE WHICH IS JUST CREATED!
                 cache.add_to_cacheline(new CachedFileInfo(fileinfo));
+                cache.traverse_cache();
                 
             } else {
                 System.err.println("Getting from local cache!");

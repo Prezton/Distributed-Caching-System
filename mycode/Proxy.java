@@ -101,10 +101,17 @@ class Proxy {
                 }
             }
 
+            int intFD;
+            synchronized (lock) {
+                fd_count += 1;
+                intFD = fd_count;
+                assert(!fd_file_map.containsKey(intFD));
+            }
+            
             RandomAccessFile raf = null;
             FileInfo fileinfo;
             // Instantiate a file corresponding to cache_path
-            String cache_path = get_cache_path(path);
+            String cache_path = get_cache_path(path) + "_rdonly_" + remote_version_num;
             fileinfo = set_fileinfo_value(is_existed, is_dir, remote_version_num, remote_file_size, cache_path, path, raf);
 
             if (!is_dir) {
@@ -125,12 +132,7 @@ class Proxy {
 
 
 
-            int intFD;
-            synchronized (lock) {
-                fd_count += 1;
-                intFD = fd_count;
-                assert(!fd_file_map.containsKey(intFD));
-            }
+
 
             fd_file_map.put(intFD, fileinfo);
 
@@ -162,14 +164,15 @@ class Proxy {
             // File has been overwritten
             if (fileinfo.access_mode.equals("rw")) {
                 try {
-                    synchronized (cache_lock) {
-                        cache.update_version(fileinfo.path);
-                    }
+
                     byte[] sent_file = new byte[(int)(raf.length())];
                     raf.seek(0);
                     int result = raf.read(sent_file);
                     assert(result != -1);
-                    srv.upload_file(fileinfo.orig_path, sent_file);
+                    int new_version = srv.upload_file(fileinfo.orig_path, sent_file);
+                    synchronized (cache_lock) {
+                        cache.update_version(fileinfo.path);
+                    }
                 } catch (Exception e) {
                     System.err.println("Proxy close(), sent file failed");
                     e.printStackTrace();
@@ -340,20 +343,20 @@ class Proxy {
             int local_version;
             boolean in_cache;
             in_cache = cache.contains_file(cache_path);
-            local_version = cache.get_local_version(cache_path);
             
             // version validation, check local and remote version diff
-            if ((!in_cache) || (local_version != remote_version_num)) {
-                System.err.println(path + " Getting from remote server!, local_ver: " + local_version + "remote ver: " + remote_version_num);
+            if ((!in_cache)) {
+                System.err.println(path + " Getting from remote server!");
                 // Get from remote server if local version does not match or local has no correct file
                 if (remote_file_size > cache_size) {
                     // return Errors.ENOMEM;
                     return -2;
                 }
                 // If file not latest version, first delete old version file.
-                if (cache.contains_file(cache_path)) {
-                    cache.remove_file(cache_path, remote_version_num);
-                }
+                // if (cache.contains_file(cache_path)) {
+                //     cache.remove_file(cache_path, remote_version_num);
+                // }
+                cache.delete_old_versions(path, remote_version_num);
                 
                 System.err.println("remain size: " + cache.get_cache_remain_size() + "remote file size: " + remote_file_size);
                 if (cache.get_cache_remain_size() < remote_file_size) {
@@ -490,6 +493,10 @@ class Proxy {
         return cano_path;
     }
 
+    private boolean create_write_copy(FileInfo fileinfo, int fd) {
+        String write_path = get_cache_path(fileinfo.orig_path) + "_wr_" + fd;
+        return true;
+    }
 
     /**
     * @brief Set file information in the map

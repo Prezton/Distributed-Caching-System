@@ -6,6 +6,8 @@ import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.nio.file.Files;
+import java.io.File;
 
 class Proxy {
 
@@ -117,7 +119,7 @@ class Proxy {
             if (!is_dir) {
                 int deal_result;
                 synchronized (cache_lock) {
-                    deal_result = deal(fileinfo, raf, access_mode);
+                    deal_result = deal(fileinfo, raf, access_mode, intFD);
                 }
                 if (deal_result == -1) {
                     return Errors.ENOENT;
@@ -335,7 +337,7 @@ class Proxy {
         * @param access_mode access_mode
         * @return an array of file bytes
         */
-        private int deal(FileInfo fileinfo, RandomAccessFile raf, String access_mode) {
+        private int deal(FileInfo fileinfo, RandomAccessFile raf, String access_mode, int fd) {
             String path = fileinfo.orig_path;
             String cache_path = fileinfo.path;
             int remote_version_num = fileinfo.version;
@@ -463,6 +465,40 @@ class Proxy {
             }
         }
 
+        /**
+        * @brief create a file copy for writting on local cache directory
+        * add it to cache_line, also sets the write_path in fileinfo
+        * @param fileinfo fileinfo, to be paired with fd
+        * @param fd fd paired with fileinfo, used for writing copy's name
+        */
+        private int create_write_copy(FileInfo fileinfo, int fd) {
+            String tmp = get_cache_path(fileinfo.orig_path);
+            String write_path = tmp + "_wr_" + fd;
+            // String cache_path = tmp + "_rdonly_" + fileinfo.version;
+            String cache_path = fileinfo.path;
+            fileinfo.write_path = write_path;
+            File file = new File(write_path);
+            if (cache.get_cache_remain_size() < fileinfo.file_size) {
+                boolean is_enough = cache.evict(fileinfo.file_size);
+                if (!is_enough) {
+                    // Errors.ENOMEM
+                    return -2;
+                }
+            }
+            // source: https://www.journaldev.com/861/java-copy-file
+            try {
+                Files.copy((new File(cache_path)).toPath(), (new File(write_path)).toPath());
+                cache.add_to_cacheline_write_ver(new CachedFileInfo(fileinfo));
+            } catch (IOException e) {
+                System.err.println("Proxy: create_write_copy() failed copy file");
+                e.printStackTrace();
+            }
+            // Problem: you can't simply add to cacheline here, because it adds the cache_path (_rdonly_)
+            // But if you don't add, cache size does not change and you cannot track it?
+            // Is it really necessary to add this temporary file into the cache_line and path_file_map?
+            return 0;
+        }
+
     }
     
     private static class FileHandlingFactory implements FileHandlingMaking {
@@ -493,10 +529,6 @@ class Proxy {
         return cano_path;
     }
 
-    private boolean create_write_copy(FileInfo fileinfo, int fd) {
-        String write_path = get_cache_path(fileinfo.orig_path) + "_wr_" + fd;
-        return true;
-    }
 
     /**
     * @brief Set file information in the map

@@ -79,12 +79,21 @@ public class Cache {
 
         // Remove from cache_line and path_file_map just for now, add later with a new file size
         CachedFileInfo cached_fileinfo = path_file_map.remove(write_path);
-        cache_line.remove(cached_fileinfo);
+        boolean is_removed = cache_line.remove(cached_fileinfo);
+        // Decrease the old file size!
+        current_cache_size -= fileinfo.file_size;
+
+        if ((!is_removed) || (cached_fileinfo == null)) {
+            System.err.println("Proxy remove_file: failed to remove CachedFileInfo from list or map" + is_removed + ", " + cached_fileinfo);
+            return -1;
+        }
 
         // Get the latest cached _rdonly_ file name
         cached_fileinfo.path = get_cache_path(cached_fileinfo.orig_path) + "_rdonly_" + latest_version;
         cached_fileinfo.write_path = null;
+        // Assign to the new file_size after write!!!
         cached_fileinfo.file_size = file_size;
+        cached_fileinfo.version = latest_version;
 
         // Delete all rdonly versions that are stale
         delete_old_versions(cached_fileinfo.orig_path, latest_version);

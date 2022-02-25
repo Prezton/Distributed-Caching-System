@@ -42,9 +42,10 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      * @brief upload file from Proxy cache to servers
      * @param path String path to upload
      * @param sent_file file to be uploaded
+     * @return the latest version of master copy
      */
-    public synchronized void upload_file(String path, byte[] uploaded_file) throws RemoteException {
-        System.err.println(path + " Server upload_file()");
+    public synchronized int upload_file(String path, byte[] uploaded_file) throws RemoteException {
+        System.err.print(path + " Server upload_file(), ");
         String remote_path = get_remote_path(path);
         File file = new File(remote_path);
 
@@ -64,6 +65,9 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
             System.err.println("EMPTY VER SHOULD NOT HAPPEN ON UPLOADED FILE!");
             path_version_map.put(remote_path, 1);
         }
+        int version = path_version_map.get(remote_path);
+        System.err.println("version: " + version);
+        return version;
 
     }
 
@@ -160,7 +164,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         rootdir = args[1]; 
 
         String server_name = "//" + "127.0.0.1" + ":" + port + "/peizhaolServer";
-        String server_name2 = "//" + "128.2.13.178" + ":" + 10608 + "/peizhaolServer";
+        String server_name2 = "//" + "128.2.13.179" + ":" + 10608 + "/peizhaolServer";
 
         try {
             Server server = new Server();

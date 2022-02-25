@@ -9,7 +9,7 @@ public interface RemoteOps extends Remote {
 
     public void create_file(String path) throws RemoteException;
 
-    public void upload_file(String path, byte[] sent_file) throws RemoteException;
+    public int upload_file(String path, byte[] sent_file) throws RemoteException;
 
     // public void send_files() throws RemoteException;
 

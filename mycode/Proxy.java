@@ -166,19 +166,24 @@ class Proxy {
             // File has been overwritten
             if (fileinfo.access_mode.equals("rw")) {
                 try {
-
-                    byte[] sent_file = new byte[(int)(raf.length())];
+                    long new_length = raf.length();
+                    byte[] sent_file = new byte[(int)new_length];
                     raf.seek(0);
                     int result = raf.read(sent_file);
                     assert(result != -1);
                     int new_version = srv.upload_file(fileinfo.orig_path, sent_file);
                     synchronized (cache_lock) {
-                        cache.update_version(fileinfo.path);
+                        if (cache.update_file_and_version(fileinfo, new_version, (int)new_length) != 0) {
+                            return Errors.ENOMEM;
+                        }
                     }
+                    cache.decrease_reference_count(fileinfo.write_path);
                 } catch (Exception e) {
                     System.err.println("Proxy close(), sent file failed");
                     e.printStackTrace();
                 }
+            } else {
+                cache.decrease_reference_count(fileinfo.path);
             }
 
             try {
@@ -193,7 +198,7 @@ class Proxy {
         }
 
         public synchronized long write( int fd, byte[] buf ) {
-            System.err.println("write, fd:" + fd);
+            System.err.println("Proxy: write, fd:" + fd);
 
             if (!fd_file_map.containsKey(fd)) {
                 return Errors.EBADF;
@@ -222,7 +227,7 @@ class Proxy {
         }
 
         public long read( int fd, byte[] buf ) {
-            System.err.println("read, fd:" + fd);
+            System.err.println("Proxy: read, fd:" + fd);
             if (!fd_file_map.containsKey(fd)) {
                 return Errors.EBADF;
             }
@@ -354,10 +359,9 @@ class Proxy {
                     // return Errors.ENOMEM;
                     return -2;
                 }
-                // If file not latest version, first delete old version file.
-                // if (cache.contains_file(cache_path)) {
-                //     cache.remove_file(cache_path, remote_version_num);
-                // }
+                
+                
+                // Delete all old versions in the cache, use orig_path + latest version to iterate through stale files
                 cache.delete_old_versions(path, remote_version_num);
                 
                 System.err.println("remain size: " + cache.get_cache_remain_size() + "remote file size: " + remote_file_size);
@@ -377,21 +381,7 @@ class Proxy {
                 // Save file to cache_dir
                 save_file_locally(cache_path, received_file);
 
-                // Save to local cache
-                try {
-                    raf = new RandomAccessFile(cache_path, access_mode);
-
-                } catch (FileNotFoundException e) {
-                    System.err.println("exception in open: RandomAccessFile(file, access_mode)");
-                    e.printStackTrace();
-                    // return Errors.ENOENT;
-                    return -1;
-                }
-                fileinfo.raf = raf;
-                // Store information in local cache
-                    // BUG HERE!! MAY DELETE FILE WHICH IS JUST CREATED!
                 cache.add_to_cacheline(new CachedFileInfo(fileinfo));
-                cache.traverse_cache();
                 
             } else {
                 System.err.println("Getting from local cache!");
@@ -400,7 +390,30 @@ class Proxy {
                 cached_fileinfo = cache.get_local_file_info(cache_path);
                 cache.move_to_end(cached_fileinfo);
                 
-                assert(cached_fileinfo != null);
+            }
+
+            // Create write copy for non-read mode
+            if (!access_mode.equals("r")) {
+                int create_result = create_write_copy(fileinfo, fd);
+                if (create_result != 0) {
+                    return create_result;
+                }
+                // Save to local cache
+                String write_path = get_cache_path(fileinfo.orig_path) + "_wr_" + fd;
+                try {
+                    raf = new RandomAccessFile(write_path, access_mode);
+
+                } catch (FileNotFoundException e) {
+                    System.err.println("exception in open: RandomAccessFile(file, access_mode)");
+                    e.printStackTrace();
+                    // return Errors.ENOENT;
+                    return -1;
+                }
+                fileinfo.raf = raf;
+                if (!cache.add_reference_count(write_path)) {
+                    System.err.println("Reference Count Add Failed! " + write_path);
+                }
+            } else {
                 try {
                     raf = new RandomAccessFile(cache_path, access_mode);
 
@@ -411,7 +424,12 @@ class Proxy {
                     return -1;
                 }
                 fileinfo.raf = raf;
+                if (!cache.add_reference_count(cache_path)) {
+                    System.err.println("Reference Count Add Failed! " + cache_path);
+                }
             }
+            cache.traverse_cache();
+
             // Store access_mode for close() to decide whether forward update back to Server.
             fileinfo.access_mode = access_mode;
             return 0;
@@ -474,8 +492,10 @@ class Proxy {
         private int create_write_copy(FileInfo fileinfo, int fd) {
             String tmp = get_cache_path(fileinfo.orig_path);
             String write_path = tmp + "_wr_" + fd;
-            // String cache_path = tmp + "_rdonly_" + fileinfo.version;
+
             String cache_path = fileinfo.path;
+
+            // Only a to-write file has write_path stored in the fileinfo
             fileinfo.write_path = write_path;
             File file = new File(write_path);
             if (cache.get_cache_remain_size() < fileinfo.file_size) {

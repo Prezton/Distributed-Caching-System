@@ -8,12 +8,14 @@ public class Cache {
     private Map<String, CachedFileInfo> path_file_map;
     private int current_cache_size;
     private final int total_cache_size;
+    private String cache_dir;
 
     public Cache(String cache_dir, int cache_size) {
         cache_line = new LinkedList<CachedFileInfo>();
         path_file_map = new ConcurrentHashMap<String, CachedFileInfo>();
         total_cache_size = cache_size;
         current_cache_size = 0;
+        this.cache_dir = cache_dir;
     }
 
     public boolean contains_file(String cache_path) {
@@ -70,6 +72,39 @@ public class Cache {
         }
         current_cache_size -= cached_fileinfo.file_size;
         return true;
+    }
+
+    /**
+    * @brief Delete stale files in the cache
+    * @param cache_path paths such as foo_rdonly_version id
+    * @return concatenated local cache path
+    */
+    public void delete_old_versions(String orig_path, int new_version) {
+        System.err.println("Proxy: delete_old_versions");
+        String partial_path = get_cache_path(orig_path) + "_rdonly_";
+
+        // Delete all cached files that are older than this version, and have a reference count of 0
+        // Iterator<CachedFileInfo> itr = cache_line.iterator();
+        
+        for (int i = 0; i < new_version; i ++) {
+            String tmp_path = partial_path + i;
+            File tmp_file = new File(tmp_path);
+            if (tmp_file.exists()) {
+
+                if (path_file_map.containsKey(tmp_path) && path_file_map.get(tmp_path).reference_count <= 0) {
+                    System.err.println("old versions DELETED!");
+
+                    tmp_file.delete();
+                    CachedFileInfo to_delete = path_file_map.remove(tmp_path);
+                    cache_line.remove(to_delete);
+                    current_cache_size -= to_delete.file_size;
+                } else {
+                    System.err.println("delete_old_versions(): file exists but not in path_file_map");
+                }
+            }
+        }
+
+        
     }
 
 
@@ -147,6 +182,24 @@ public class Cache {
         }
     }
 
+    public boolean add_reference_count(String cache_path) {
+        if (path_file_map.containsKey(cache_path)) {
+            path_file_map.get(cache_path).reference_count += 1;
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    public boolean decrease_reference_count(String cache_path) {
+        if (path_file_map.containsKey(cache_path)) {
+            path_file_map.get(cache_path).reference_count -= 1;
+        } else {
+            return false;
+        }
+        return true;
+    }
+
     /**
      * @brief get file info from cache mapping
      * @param path file path to get from
@@ -160,8 +213,24 @@ public class Cache {
         }
     }
 
-    public boolean create_cache(String cache_dir, int cache_size) {
-        return true;
+
+
+    /**
+    * @brief Get local cache path by adding cache directory
+    * @param path original input file path
+    * @return concatenated local cache path
+    */
+    private String get_cache_path(String path) {
+        StringBuilder sb = new StringBuilder(cache_dir);
+        sb.append("/");
+        sb.append(new StringBuilder(path));
+        String cano_path = null;
+        try {
+            cano_path = (new File(sb.toString())).getCanonicalPath();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return cano_path;
     }
 
 }

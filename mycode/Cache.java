@@ -50,8 +50,58 @@ public class Cache {
         }
     }
 
-    public void update_version(String cache_path) {
-        (path_file_map.get(cache_path)).version += 1;
+    /**
+     * @brief add fileinfo to cache mapping and cache line
+     * @param cached_fileinfo file information to add
+     */
+    public synchronized void add_to_cacheline_write_ver(CachedFileInfo cached_fileinfo) {
+        System.err.println("Proxy: add_to_cacheline_write_ver()");
+        String write_path = cached_fileinfo.write_path;
+        if (!path_file_map.containsKey(write_path)) {
+            // Not in cache yet
+            cache_line.add(cached_fileinfo);
+            path_file_map.put(cached_fileinfo.write_path, cached_fileinfo);
+            current_cache_size += cached_fileinfo.file_size;
+        }
+    }
+
+    /**
+     * @brief Update version after proxy writes to a new file, used in close()
+     * @brief Convert write file to read file by Rename
+     * @brief Remove write file from cache_line and path_file_map
+     * @brief Used the write file's CachedFileInfo to store the latest _rdonly_ file and easy to do MRU
+     * @param write_path file path to be update version for
+     * @param latest_version latest version received from server upload_file() (should be same as local cached latest version)
+     * @param file_size File size after write
+     */
+    public int update_file_and_version(FileInfo fileinfo, int latest_version, int file_size) {
+        String write_path = fileinfo.write_path;
+
+        // Remove from cache_line and path_file_map just for now, add later with a new file size
+        CachedFileInfo cached_fileinfo = path_file_map.remove(write_path);
+        cache_line.remove(cached_fileinfo);
+
+        // Get the latest cached _rdonly_ file name
+        cached_fileinfo.path = get_cache_path(cached_fileinfo.orig_path) + "_rdonly_" + latest_version;
+        cached_fileinfo.write_path = null;
+        cached_fileinfo.file_size = file_size;
+
+        // Delete all rdonly versions that are stale
+        delete_old_versions(cached_fileinfo.orig_path, latest_version);
+
+        if (get_cache_remain_size() < file_size) {
+            boolean is_enough = evict(file_size);
+            if (!is_enough) {
+                // Errors.ENOMEM
+                return -2;
+            }
+        }
+        File file = new File(write_path);
+        file.renameTo(new File(cached_fileinfo.path));
+        // Add again, marked MRU by this operation
+        add_to_cacheline(cached_fileinfo);
+        return 0;
+
     }
 
     /**
@@ -92,11 +142,11 @@ public class Cache {
             if (tmp_file.exists()) {
 
                 if (path_file_map.containsKey(tmp_path) && path_file_map.get(tmp_path).reference_count <= 0) {
-                    System.err.println("old versions DELETED!");
-
-                    tmp_file.delete();
+                    System.err.println("old versions DELETED: " + tmp_path);
                     CachedFileInfo to_delete = path_file_map.remove(tmp_path);
-                    cache_line.remove(to_delete);
+                    System.err.println(to_delete.path);
+                    System.err.println(cache_line.remove(to_delete));
+                    tmp_file.delete();
                     current_cache_size -= to_delete.file_size;
                 } else {
                     System.err.println("delete_old_versions(): file exists but not in path_file_map");
@@ -153,11 +203,11 @@ public class Cache {
             CachedFileInfo current = itr.next();
             boolean is_removed = cache_line.remove(current);
             if (!is_removed) {
-                System.err.println("Cache: evict(), failed to evict the current element in cache_line list");
+                System.err.println("Cache: evict(), CACHE_LINE evict failed!");
             }
             CachedFileInfo tmp2 = path_file_map.remove(current.path);
             if (tmp2 == null) {
-                System.err.println("Cache: evict(), failed to evict the first element in path_file_map");
+                System.err.println("Cache: evict(), PATH_FILE_MAP evict failed!");
             }
             File file = new File(current.path);
             file.delete();
@@ -178,7 +228,11 @@ public class Cache {
         Iterator<CachedFileInfo> itr = cache_line.iterator();
         while (itr.hasNext()) {
             CachedFileInfo current = itr.next();
-            System.err.println("Node: " + current.path);
+            if (current.write_path != null) {
+                System.err.println("Node: " + current.write_path);
+            } else {
+                System.err.println("Node: " + current.path);
+            }
         }
     }
 

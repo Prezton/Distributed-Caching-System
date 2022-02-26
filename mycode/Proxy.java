@@ -95,9 +95,13 @@ class Proxy {
                 if (!is_dir) {
                     try {
                         System.err.println("File not on server, create it! now remote ver num is: " + remote_version_num);
-                        srv.create_file(path);
+                        int create_result = srv.create_file(path);
+                        if (create_result == -1) {
+                            // Create file fail, usually because the file is under a non-existed
+                            return Errors.ENOENT;
+                        }
                     } catch (RemoteException e) {
-                        System.err.println("srv.create_file(path) fail");
+                        System.err.println("Proxy: srv.create_file(path) fail");
                         e.printStackTrace();
                     }
                 }
@@ -173,19 +177,22 @@ class Proxy {
                     assert(result != -1);
                     int new_version = srv.upload_file(fileinfo.orig_path, sent_file);
                     synchronized (cache_lock) {
-                        if (cache.update_file_and_version(fileinfo, new_version, (int)new_length) != 0) {
+                        cache.decrease_reference_count(fileinfo.write_path);
+                        if (cache.update_file_and_version(fileinfo, new_version, (int)new_length) == -2) {
                             return Errors.ENOMEM;
                         }
+                        cache.traverse_cache();
                     }
-                    cache.decrease_reference_count(fileinfo.write_path);
                 } catch (Exception e) {
                     System.err.println("Proxy close(), sent file failed");
                     e.printStackTrace();
                 }
             } else {
-                cache.decrease_reference_count(fileinfo.path);
+                synchronized (cache_lock) {
+                    cache.decrease_reference_count(fileinfo.path);
+                    cache.traverse_cache();
+                }
             }
-
             try {
                 raf.close();
                 fd_file_map.remove(fd);
@@ -343,6 +350,7 @@ class Proxy {
         * @return an array of file bytes
         */
         private int deal(FileInfo fileinfo, RandomAccessFile raf, String access_mode, int fd) {
+            System.err.println("Proxy: deal()");
             String path = fileinfo.orig_path;
             String cache_path = fileinfo.path;
             int remote_version_num = fileinfo.version;
@@ -360,11 +368,10 @@ class Proxy {
                     return -2;
                 }
                 
-                
+                System.err.println("remain size: " + cache.get_cache_remain_size() + " current file size: " + remote_file_size);
                 // Delete all old versions in the cache, use orig_path + latest version to iterate through stale files
                 cache.delete_old_versions(path, remote_version_num);
                 
-                System.err.println("remain size: " + cache.get_cache_remain_size() + "remote file size: " + remote_file_size);
                 if (cache.get_cache_remain_size() < remote_file_size) {
                     boolean is_enough = cache.evict(remote_file_size);
                     if (!is_enough) {
@@ -388,13 +395,28 @@ class Proxy {
                 // Get from local cache
                 CachedFileInfo cached_fileinfo;
                 cached_fileinfo = cache.get_local_file_info(cache_path);
-                cache.move_to_end(cached_fileinfo);
+                if (cached_fileinfo != null) {
+                    cache.move_to_end(cached_fileinfo);
+
+                } else {
+                    System.err.println("Proxy: get_local_file_info() failed");
+                }
                 
             }
 
             // Create write copy for non-read mode
             if (!access_mode.equals("r")) {
+
+                // Add reference count to read file to avoid it being evicted before making write copy.
+                if (!cache.add_reference_count(cache_path)) {
+                    System.err.println("Reference Count Add for Making Write Copy Failed! " + cache_path);
+                }
                 int create_result = create_write_copy(fileinfo, fd);
+
+                // Decrease reference count to read file to avoid it being evicted before making write copy.
+                if (!cache.decrease_reference_count(cache_path)) {
+                    System.err.println("Reference Count Decrease for Making Write Copy Failed! " + cache_path);
+                }
                 if (create_result != 0) {
                     return create_result;
                 }
@@ -428,7 +450,6 @@ class Proxy {
                     System.err.println("Reference Count Add Failed! " + cache_path);
                 }
             }
-            cache.traverse_cache();
 
             // Store access_mode for close() to decide whether forward update back to Server.
             fileinfo.access_mode = access_mode;
@@ -490,6 +511,7 @@ class Proxy {
         * @param fd fd paired with fileinfo, used for writing copy's name
         */
         private int create_write_copy(FileInfo fileinfo, int fd) {
+            System.err.println("Proxy: create_write_copy()");
             String tmp = get_cache_path(fileinfo.orig_path);
             String write_path = tmp + "_wr_" + fd;
 
@@ -499,6 +521,8 @@ class Proxy {
             fileinfo.write_path = write_path;
             File file = new File(write_path);
             if (cache.get_cache_remain_size() < fileinfo.file_size) {
+                // BUG HERE! if you evict for write copies, it may be possible to evict your own read copy
+                // So you cannot do files.copy() here!
                 boolean is_enough = cache.evict(fileinfo.file_size);
                 if (!is_enough) {
                     // Errors.ENOMEM
@@ -539,6 +563,7 @@ class Proxy {
     private static String get_cache_path(String path) {
         StringBuilder sb = new StringBuilder(cache_dir);
         sb.append("/");
+        path = path.replace("/", ";;");
         sb.append(new StringBuilder(path));
         String cano_path = null;
         try {

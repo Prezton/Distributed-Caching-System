@@ -5,7 +5,10 @@ public class CachedFileInfo {
     public int file_size;
     public String path;
     public String orig_path;
-    public String access_mode;
+    // public String access_mode;
+    public int reference_count;
+    public String write_path;
+
     public CachedFileInfo() {
 
     }
@@ -17,7 +20,8 @@ public class CachedFileInfo {
         this.file_size = fileinfo.file_size;
         this.path = fileinfo.path;
         this.orig_path = fileinfo.orig_path;
-        this.access_mode = fileinfo.access_mode;
+        this.write_path = fileinfo.write_path;
+        // this.access_mode = fileinfo.access_mode;
     }
 
 }

@@ -1,5 +1,6 @@
 import java.io.*;
 import java.io.IOException;
+import java.io.File.*;
 import java.net.MalformedURLException;
 import java.util.*;
 import java.rmi.*;
@@ -23,19 +24,23 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
     /**
      * @brief create file on server, used for non-existed and non-directory file
      * @param path String path to create
+     * @return 0 indicates create success, -1 indicates IOException
      */
-    public void create_file(String path) throws RemoteException {
-        System.err.println(path + " Server create_file()");
+    public int create_file(String path) throws RemoteException {
         String remote_path = get_remote_path(path);
+        System.err.println(remote_path + " Server create_file()");
+
         File file = new File(remote_path);
         try {
             file.createNewFile();
             path_version_map.put(remote_path, 1);
 
         } catch (IOException e) {
-            System.err.println("server file.createNewFile fail");
+            System.err.println("Server: create_file() fail");
             e.printStackTrace();
+            return -1;
         }
+        return 0;
     }
 
     /**
@@ -45,8 +50,9 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      * @return the latest version of master copy
      */
     public synchronized int upload_file(String path, byte[] uploaded_file) throws RemoteException {
-        System.err.print(path + " Server upload_file(), ");
         String remote_path = get_remote_path(path);
+        System.err.print(remote_path + " Server upload_file(), ");
+
         File file = new File(remote_path);
 
         RandomAccessFile raf;
@@ -78,9 +84,10 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      * @return 0 if not in cache, otherwise version num
      */
     public Reply_FileInfo get_file_info(String path) throws RemoteException {
-        System.err.println(path + " Server get_file_info()");
 
         String remote_path = get_remote_path(path);
+        System.err.println(remote_path + " Server get_file_info()");
+
         File file = new File(remote_path);
         Reply_FileInfo reply_fileinfo = new Reply_FileInfo();
 
@@ -99,7 +106,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         } else {
             System.err.println("Server: This fileinfo is incomplete due to non-existed");
         }
-        reply_fileinfo.path_valid = check_server_path(remote_path);
+        reply_fileinfo.path_valid = check_server_path(path, remote_path);
 
         return reply_fileinfo;
     }
@@ -111,9 +118,10 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      * @return an array of bytes representing the file
      */
     public byte[] get_file(String path) throws RemoteException {
-        System.err.println(path + " Server get_file()");
 
         String remote_path = get_remote_path(path);
+        System.err.println(remote_path + " Server get_file()");
+
         File file = new File(remote_path);
         assert(file.exists());
         assert(!file.isDirectory());
@@ -155,24 +163,42 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         }
     }
 
-    private boolean check_server_path(String remote_path) {
-        return remote_path.contains(rootdir);
+    private boolean check_server_path(String path, String remote_path) {
+        // File file = new File(rootdir);
+        // String cano_rootdir = null;
+        // boolean is_valid;
+        // try {
+        //     cano_rootdir = file.getCanonicalPath();
+        // } catch (IOException e) {
+        //     e.printStackTrace();
+        // }
+        // System.err.println("check path: " + path + "\n" + remote_path + "\n" + cano_rootdir);
+
+        if (path.startsWith("..") || path.startsWith("../") || path.startsWith("/..")) {
+            return false;
+        }
+        // if (!remote_path.contains(cano_rootdir)) {
+        //     return false;
+        // }
+
+        return true;
     }
 
     public static void main(String[] args) {
         int port = Integer.parseInt(args[0]);
         rootdir = args[1]; 
+        System.err.println("rootdir is: " + rootdir);
 
         String server_name = "//" + "127.0.0.1" + ":" + port + "/peizhaolServer";
-        String server_name2 = "//" + "128.2.13.179" + ":" + 10608 + "/peizhaolServer";
+        // String server_name2 = "//" + "128.2.13.181" + ":" + 10608 + "/peizhaolServer";
 
         try {
             Server server = new Server();
             LocateRegistry.createRegistry(port);
-            LocateRegistry.createRegistry(10608);
+            // LocateRegistry.createRegistry(10608);
 
             Naming.rebind(server_name, server);
-            Naming.rebind(server_name2, server);
+            // Naming.rebind(server_name2, server);
 
         } catch(Exception e) {
             System.err.println("An exception in Server main!");

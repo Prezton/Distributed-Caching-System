@@ -1,1 +1,1 @@
-java Server 10808 dir_server
+java Server 10808 ../mycode/dir_server

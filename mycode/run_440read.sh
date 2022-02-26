@@ -1,6 +1,9 @@
-LD_PRELOAD=../lib/lib440lib.so ../tools/440read foo
-LD_PRELOAD=../lib/lib440lib.so ../tools/440read foo
-LD_PRELOAD=../lib/lib440lib.so ../tools/440read foo
-LD_PRELOAD=../lib/lib440lib.so ../tools/440read foo
-LD_PRELOAD=../lib/lib440lib.so ../tools/440read foo
-LD_PRELOAD=../lib/lib440lib.so ../tools/440read foo
+LD_PRELOAD=../lib/lib440lib.so ../tools/440read A
+LD_PRELOAD=../lib/lib440lib.so ../tools/440read B
+LD_PRELOAD=../lib/lib440lib.so ../tools/440read C
+LD_PRELOAD=../lib/lib440lib.so ../tools/440read B
+LD_PRELOAD=../lib/lib440lib.so ../tools/440read D
+LD_PRELOAD=../lib/lib440lib.so ../tools/440read E
+LD_PRELOAD=../lib/lib440lib.so ../tools/440read B
+LD_PRELOAD=../lib/lib440lib.so ../tools/440read F
+LD_PRELOAD=../lib/lib440lib.so ../tools/440read G

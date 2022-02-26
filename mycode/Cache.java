@@ -40,7 +40,7 @@ public class Cache {
      * @param cached_fileinfo file information to add
      */
     public synchronized void add_to_cacheline(CachedFileInfo cached_fileinfo) {
-        System.err.println("Proxy: add_to_cacheline()");
+        System.err.println("Cache: add_to_cacheline()");
         String cache_path = cached_fileinfo.path;
         if (!path_file_map.containsKey(cache_path)) {
             // Not in cache yet
@@ -55,7 +55,7 @@ public class Cache {
      * @param cached_fileinfo file information to add
      */
     public synchronized void add_to_cacheline_write_ver(CachedFileInfo cached_fileinfo) {
-        System.err.println("Proxy: add_to_cacheline_write_ver()");
+        System.err.println("Cache: add_to_cacheline_write_ver()");
         String write_path = cached_fileinfo.write_path;
         if (!path_file_map.containsKey(write_path)) {
             // Not in cache yet
@@ -74,7 +74,8 @@ public class Cache {
      * @param latest_version latest version received from server upload_file() (should be same as local cached latest version)
      * @param file_size File size after write
      */
-    public int update_file_and_version(FileInfo fileinfo, int latest_version, int file_size) {
+    public synchronized int update_file_and_version(FileInfo fileinfo, int latest_version, int file_size) {
+        System.err.println("Cache: update_file_and_version");
         String write_path = fileinfo.write_path;
 
         // Remove from cache_line and path_file_map just for now, add later with a new file size
@@ -84,7 +85,7 @@ public class Cache {
         current_cache_size -= fileinfo.file_size;
 
         if ((!is_removed) || (cached_fileinfo == null)) {
-            System.err.println("Proxy remove_file: failed to remove CachedFileInfo from list or map" + is_removed + ", " + cached_fileinfo);
+            System.err.println("Cache remove_file: failed to remove CachedFileInfo from list or map" + is_removed + ", " + cached_fileinfo);
             return -1;
         }
 
@@ -126,7 +127,7 @@ public class Cache {
         File file = new File(cache_path);
         file.delete();
         if (!is_removed || (tmp == null)) {
-            System.err.println("Proxy remove_file: failed to remove CachedFileInfo from list or map" + is_removed + " " + tmp);
+            System.err.println("Cache: remove_file failed to remove CachedFileInfo from list or map" + is_removed + " " + tmp);
             return false;
         }
         current_cache_size -= cached_fileinfo.file_size;
@@ -139,7 +140,7 @@ public class Cache {
     * @return concatenated local cache path
     */
     public void delete_old_versions(String orig_path, int new_version) {
-        System.err.println("Proxy: delete_old_versions");
+        System.err.println("Cache: delete_old_versions");
         String partial_path = get_cache_path(orig_path) + "_rdonly_";
 
         // Delete all cached files that are older than this version, and have a reference count of 0
@@ -153,8 +154,7 @@ public class Cache {
                 if (path_file_map.containsKey(tmp_path) && path_file_map.get(tmp_path).reference_count <= 0) {
                     System.err.println("old versions DELETED: " + tmp_path);
                     CachedFileInfo to_delete = path_file_map.remove(tmp_path);
-                    System.err.println(to_delete.path);
-                    System.err.println(cache_line.remove(to_delete));
+                    cache_line.remove(to_delete);
                     tmp_file.delete();
                     current_cache_size -= to_delete.file_size;
                 } else {
@@ -206,21 +206,26 @@ public class Cache {
     }
 
     public synchronized boolean evict(long file_size) {
-        System.err.println("Evict!");
+        System.err.println("Cache: evict()");
         Iterator<CachedFileInfo> itr = cache_line.iterator();
         while (itr.hasNext()) {
             CachedFileInfo current = itr.next();
-            boolean is_removed = cache_line.remove(current);
-            if (!is_removed) {
-                System.err.println("Cache: evict(), CACHE_LINE evict failed!");
+            if (current.reference_count <= 0) {
+                boolean is_removed = cache_line.remove(current);
+                if (!is_removed) {
+                    System.err.println("Cache: evict(), CACHE_LINE evict failed!");
+                    return false;
+                }
+                CachedFileInfo tmp2 = path_file_map.remove(current.path);
+                if (tmp2 == null) {
+                    System.err.println("Cache: evict(), PATH_FILE_MAP evict failed!");
+                    return false;
+                }
+                File file = new File(current.path);
+                file.delete();
+                current_cache_size -= current.file_size;
             }
-            CachedFileInfo tmp2 = path_file_map.remove(current.path);
-            if (tmp2 == null) {
-                System.err.println("Cache: evict(), PATH_FILE_MAP evict failed!");
-            }
-            File file = new File(current.path);
-            file.delete();
-            current_cache_size -= current.file_size;
+
             if (get_cache_remain_size() >= file_size) {
                 break;
             }
@@ -238,9 +243,9 @@ public class Cache {
         while (itr.hasNext()) {
             CachedFileInfo current = itr.next();
             if (current.write_path != null) {
-                System.err.println("Node: " + current.write_path);
+                System.err.println("Node: " + (current.write_path).substring((current.write_path).lastIndexOf("/")));
             } else {
-                System.err.println("Node: " + current.path);
+                System.err.println("Node: " + (current.path).substring((current.path).lastIndexOf("/")));
             }
         }
     }
@@ -286,6 +291,7 @@ public class Cache {
     private String get_cache_path(String path) {
         StringBuilder sb = new StringBuilder(cache_dir);
         sb.append("/");
+        path = path.replace("/", ";;");
         sb.append(new StringBuilder(path));
         String cano_path = null;
         try {

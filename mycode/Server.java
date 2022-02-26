@@ -12,6 +12,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
 
 
     private static Map<String, Integer> path_version_map = new ConcurrentHashMap<String, Integer>();
+    private static Map<String, Object> path_lock_map = new ConcurrentHashMap<String, Object>();
     private static String rootdir;
 
     // UnicastRemoteObject Instantiate a Server
@@ -28,7 +29,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      */
     public int create_file(String path) throws RemoteException {
         String remote_path = get_remote_path(path);
-        System.err.println(remote_path + " Server create_file()");
+        System.err.println(remote_path + " Server: create_file()");
 
         File file = new File(remote_path);
         try {
@@ -52,28 +53,50 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
     public synchronized int upload_file(String path, byte[] uploaded_file) throws RemoteException {
         String remote_path = get_remote_path(path);
         System.err.print(remote_path + " Server upload_file(), ");
+        synchronized (path_lock_map.get(remote_path)) {
+            File file = new File(remote_path);
 
-        File file = new File(remote_path);
+            RandomAccessFile raf;
+            try {
+                raf = new RandomAccessFile(file, "rw");
+                raf.write(uploaded_file);
+                raf.close();
+            } catch (Exception e) {
+                System.err.println("Server upload_file() fail");
+                e.printStackTrace();
+            }
+            // Update version map
+            if (path_version_map.containsKey(remote_path)) {
+                path_version_map.put(remote_path, path_version_map.get(remote_path) + 1);
+            } else {
+                System.err.println("EMPTY VER SHOULD NOT HAPPEN ON UPLOADED FILE!");
+                path_version_map.put(remote_path, 1);
+            }
+            int version = path_version_map.get(remote_path);
+            System.err.println("version: " + version);
+            return version;
+        }
+        // File file = new File(remote_path);
 
-        RandomAccessFile raf;
-        try {
-            raf = new RandomAccessFile(file, "rw");
-            raf.write(uploaded_file);
-            raf.close();
-        } catch (Exception e) {
-            System.err.println("Server upload_file() fail");
-            e.printStackTrace();
-        }
-        // Update version map
-        if (path_version_map.containsKey(remote_path)) {
-            path_version_map.put(remote_path, path_version_map.get(remote_path) + 1);
-        } else {
-            System.err.println("EMPTY VER SHOULD NOT HAPPEN ON UPLOADED FILE!");
-            path_version_map.put(remote_path, 1);
-        }
-        int version = path_version_map.get(remote_path);
-        System.err.println("version: " + version);
-        return version;
+        // RandomAccessFile raf;
+        // try {
+        //     raf = new RandomAccessFile(file, "rw");
+        //     raf.write(uploaded_file);
+        //     raf.close();
+        // } catch (Exception e) {
+        //     System.err.println("Server upload_file() fail");
+        //     e.printStackTrace();
+        // }
+        // // Update version map
+        // if (path_version_map.containsKey(remote_path)) {
+        //     path_version_map.put(remote_path, path_version_map.get(remote_path) + 1);
+        // } else {
+        //     System.err.println("EMPTY VER SHOULD NOT HAPPEN ON UPLOADED FILE!");
+        //     path_version_map.put(remote_path, 1);
+        // }
+        // int version = path_version_map.get(remote_path);
+        // System.err.println("version: " + version);
+        // return version;
 
     }
 
@@ -87,6 +110,11 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
 
         String remote_path = get_remote_path(path);
         System.err.println(remote_path + " Server get_file_info()");
+
+        // Create a lock Object to handle concurrent proxies
+        if (!path_lock_map.containsKey(remote_path)) {
+            path_lock_map.put(remote_path, new Object());
+        }
 
         File file = new File(remote_path);
         Reply_FileInfo reply_fileinfo = new Reply_FileInfo();
@@ -190,7 +218,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         System.err.println("rootdir is: " + rootdir);
 
         String server_name = "//" + "127.0.0.1" + ":" + port + "/peizhaolServer";
-        // String server_name2 = "//" + "128.2.13.181" + ":" + 10608 + "/peizhaolServer";
+        // String server_name2 = "//" + "128.2.13.163" + ":" + 10608 + "/peizhaolServer";
 
         try {
             Server server = new Server();

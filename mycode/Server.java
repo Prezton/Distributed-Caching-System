@@ -14,6 +14,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
     private static Map<String, Integer> path_version_map = new ConcurrentHashMap<String, Integer>();
     private static Map<String, Object> path_lock_map = new ConcurrentHashMap<String, Object>();
     private static String rootdir;
+    private static final int chunk_size = 102400;
 
     // UnicastRemoteObject Instantiate a Server
     // listen and wait for a client
@@ -43,6 +44,47 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         }
         return 0;
     }
+
+
+    /**
+     * @brief delete files on server
+     * @param path String path to upload
+     * @param sent_file file to be uploaded
+     * @return the latest version of master copy
+     */
+    public int delete_file(String path) throws RemoteException {
+        String remote_path = get_remote_path(path);
+        System.err.println("Server: delete_file() " + remote_path);
+        if (!path_lock_map.containsKey(remote_path)) {
+            path_lock_map.put(remote_path, new Object());
+        }
+        
+        synchronized (path_lock_map.get(remote_path)) {
+            File file = new File(remote_path);
+            if (!file.exists()) {
+                // Errors.ENOENT;
+                return -1;
+            }
+            try {
+                boolean is_deleted = file.delete();
+                if (!is_deleted) {
+                    System.err.println("Server: delete_file() failed, undeleted" + is_deleted);
+                }
+                Object rmresult = path_version_map.remove(remote_path);
+                if (rmresult == null) {
+                    System.err.println("Server: delete_file() failed, unremoved" + rmresult);
+                }
+            } catch (SecurityException e) {
+                System.err.println("Server: delete_file() Security Exception");
+                e.printStackTrace();
+                // Errors.EPERM
+                return -2;
+            }
+        }
+
+        return 0;
+    }
+
 
     /**
      * @brief upload file from Proxy cache to servers
@@ -158,6 +200,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         try {
             RandomAccessFile raf = new RandomAccessFile(file, "r");
             raf.read(file_bytes);
+            raf.close();
         } catch (IOException e) {
             System.err.println("Exception in getting file from server");
             e.printStackTrace();
@@ -165,6 +208,34 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
 
         return file_bytes;
 
+    }
+
+    /**
+     * @brief get the file from remote server with chunking
+     * @param path String path of the file
+     * @param offset file offset used for chunking
+     * @prerequisite path is not referred to non-exist file or directory
+     * @return an array of bytes representing the file
+     */
+    public byte[] get_file(String path, long offset) throws RemoteException {
+        String remote_path = get_remote_path(path);
+        System.err.println(remote_path + " Server get_file() with chunking!");
+        File file = new File(remote_path);
+        // assert(file.exists());
+        // assert(!file.isDirectory());
+        byte[] file_bytes = new byte[chunk_size];
+
+        try {
+            RandomAccessFile raf = new RandomAccessFile(file, "r");
+            raf.seek(offset);
+            raf.read(file_bytes, 0, chunk_size);
+            raf.close();
+        } catch (IOException e) {
+            System.err.println("Exception in getting file from server");
+            e.printStackTrace();
+        }
+
+        return file_bytes;
     }
 
     private static String get_remote_path(String path) {
@@ -218,7 +289,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         System.err.println("rootdir is: " + rootdir);
 
         String server_name = "//" + "127.0.0.1" + ":" + port + "/peizhaolServer";
-        // String server_name2 = "//" + "128.2.13.163" + ":" + 10608 + "/peizhaolServer";
+        // String server_name2 = "//" + "128.2.13.179" + ":" + 10608 + "/peizhaolServer";
 
         try {
             Server server = new Server();

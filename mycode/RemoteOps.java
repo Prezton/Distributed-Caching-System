@@ -11,6 +11,10 @@ public interface RemoteOps extends Remote {
 
     public int upload_file(String path, byte[] sent_file) throws RemoteException;
 
+    public int delete_file(String path) throws RemoteException;
+
+    public byte[] get_file(String path, long offset) throws RemoteException;
+
     // public void send_files() throws RemoteException;
 
 

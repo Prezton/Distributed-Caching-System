@@ -118,10 +118,9 @@ public class Cache {
      * @brief remove existing file in LinkedList and HashMap, and delete it.
      * @param cache_path file path to be removed
      */
-    public synchronized boolean remove_file(String cache_path, int new_version) {
+    public synchronized boolean remove_file(String cache_path) {
         assert(path_file_map.containsKey(cache_path));
         CachedFileInfo cached_fileinfo = path_file_map.get(cache_path);
-        assert(new_version != cached_fileinfo.version);
         boolean is_removed = cache_line.remove(cached_fileinfo);
         CachedFileInfo tmp = path_file_map.remove(cache_path);
         File file = new File(cache_path);
@@ -201,6 +200,12 @@ public class Cache {
     // }
 
     public void move_to_end(CachedFileInfo cached_fileinfo) {
+        cache_line.remove(cached_fileinfo);
+        cache_line.add(cached_fileinfo);
+    }
+
+    public void move_to_end(String cache_path) {
+        CachedFileInfo cached_fileinfo = path_file_map.get(cache_path);
         cache_line.remove(cached_fileinfo);
         cache_line.add(cached_fileinfo);
     }

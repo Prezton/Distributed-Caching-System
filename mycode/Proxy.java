@@ -6,6 +6,9 @@ import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.util.*;
 import java.util.concurrent.*;
+
+import javax.print.DocFlavor.INPUT_STREAM;
+
 import java.nio.file.Files;
 import java.io.File;
 
@@ -24,6 +27,7 @@ class Proxy {
     private static String cache_dir;
     private static int cache_size;
     private static Cache cache;
+    private static final int chunk_size = 204800;
 
     private static class FileHandler implements FileHandling {
 
@@ -189,6 +193,8 @@ class Proxy {
                 }
             } else {
                 synchronized (cache_lock) {
+                    // Move to end to deal with slow reads LRU!
+                    cache.move_to_end(fileinfo.path);
                     cache.decrease_reference_count(fileinfo.path);
                     cache.traverse_cache();
                 }
@@ -316,20 +322,63 @@ class Proxy {
         }
 
         public int unlink( String path ) {
-            System.err.println("unlink");
+            System.err.println("Proxy: unlink()" + path);
 
-            if (path == null) {
+            if (path == null || path.startsWith("..")) {
                 return Errors.EINVAL;
             }
-            File file = new File(path);
-            if (!file.exists()) {
-                return Errors.ENOENT;
+            Reply_FileInfo reply_fileinfo = null;
+            try {
+                reply_fileinfo = srv.get_file_info(path);
+            } catch (RemoteException e) {
+                System.err.println("Proxy: unlink() remote exception");
+                e.printStackTrace();
+            }
+            boolean is_existed = reply_fileinfo.is_existed;
+            int remote_version = reply_fileinfo.version;
+            String cache_path = get_cache_path(path) + "_rdonly_" + remote_version;
+
+            // if (!is_existed) {
+            //     return Errors.ENOENT;
+            // }
+
+            // if (reply_fileinfo.is_dir) {
+            //     return Errors.EISDIR;
+            // }
+
+            // If file is outside server root directory
+            if (!reply_fileinfo.path_valid) {
+                System.err.println("Proxy: unlink() Remote path outside server rootdir");
+                return Errors.EPERM;
             }
 
+            File file = new File(cache_path);
             try {
-                file.delete();
+                // Delete local cached copy (all versions) and if latest ver exists, also delete it
+                synchronized(cache_lock) {
+                    cache.delete_old_versions(path, remote_version);
+                    if (file.exists()) {
+                        if (cache.contains_file(cache_path)) {
+                            CachedFileInfo cached_fileinfo = cache.get_local_file_info(cache_path);
+                            if (cached_fileinfo.reference_count <= 0) {
+                                boolean is_removed = cache.remove_file(cache_path);
+                                if (!is_removed) {
+                                    System.err.println("Proxy: unlink() failed to remove latest version");
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Delete server's master copy and get return number
+                int delete_result = srv.delete_file(path);
+                if (delete_result == -1) {
+                    return Errors.ENOENT;
+                } else if (delete_result == -2) {
+                    return Errors.EPERM;
+                }
                 return 0;
-            } catch (SecurityException e) {
+            } catch (Exception e) {
                 System.err.println("err in file.delete()");
                 e.printStackTrace();
                 return Errors.EPERM;
@@ -474,16 +523,6 @@ class Proxy {
             return received_file;
         }
 
-        // private void create_file_locally(String cache_path) {
-        //     System.err.println("Proxy create_file_locally(), path: " + cache_path);
-        //     File file = new File(cache_path);
-        //     try {
-        //         file.createNewFile();
-        //     } catch (IOException e) {
-        //         System.err.println("Proxy file.createNewFile fail");
-        //         e.printStackTrace();
-        //     }
-        // }
 
         /**
         * @brief create file on local cache directory
@@ -503,6 +542,33 @@ class Proxy {
                 e.printStackTrace();
             }
         }
+
+        /**
+        * @brief Get file from server with chunking, and save it locally, 
+        * @brief an integration of fetch_file and save_file_locally
+        * @param path remote file path on server
+        * @param offset file offset used for chunking
+        * @return an array of file bytes
+        */
+        private byte[] fetch_save_huge_file(String path, String cache_path, long file_size) {
+            System.err.println("Proxy fetch_save_huge_file() with chunking");
+            byte[] received_file = null;
+            long offset = 0;
+            try {
+                RandomAccessFile tmp = new RandomAccessFile(cache_path, "rw");
+                while (offset < file_size) {
+                    received_file = srv.get_file(path, offset);
+                    offset += chunk_size;
+                    tmp.write(received_file);
+                }
+                tmp.close();
+            } catch (IOException e) {
+                System.err.println("Proxy: fetch_save_huge_file() failed");
+                e.printStackTrace();
+            }
+            return null;
+        }
+
 
         /**
         * @brief create a file copy for writting on local cache directory

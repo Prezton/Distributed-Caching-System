@@ -14,7 +14,8 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
     private static Map<String, Integer> path_version_map = new ConcurrentHashMap<String, Integer>();
     private static Map<String, Object> path_lock_map = new ConcurrentHashMap<String, Object>();
     private static String rootdir;
-    private static final int chunk_size = 102400;
+    private static final int chunk_size = 204800;
+    private static final int huge_file_size = 10000000;
 
     // UnicastRemoteObject Instantiate a Server
     // listen and wait for a client
@@ -118,27 +119,47 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
             System.err.println("version: " + version);
             return version;
         }
-        // File file = new File(remote_path);
 
-        // RandomAccessFile raf;
-        // try {
-        //     raf = new RandomAccessFile(file, "rw");
-        //     raf.write(uploaded_file);
-        //     raf.close();
-        // } catch (Exception e) {
-        //     System.err.println("Server upload_file() fail");
-        //     e.printStackTrace();
-        // }
-        // // Update version map
-        // if (path_version_map.containsKey(remote_path)) {
-        //     path_version_map.put(remote_path, path_version_map.get(remote_path) + 1);
-        // } else {
-        //     System.err.println("EMPTY VER SHOULD NOT HAPPEN ON UPLOADED FILE!");
-        //     path_version_map.put(remote_path, 1);
-        // }
-        // int version = path_version_map.get(remote_path);
-        // System.err.println("version: " + version);
-        // return version;
+    }
+
+
+    /**
+     * @brief upload file from Proxy cache to servers
+     * @param path String path to upload
+     * @param sent_file file to be uploaded
+     * @return the latest version of master copy
+     */
+    public synchronized int upload_huge_file(String path, byte[] uploaded_file, long offset, boolean finished) throws RemoteException {
+        String remote_path = get_remote_path(path);
+        System.err.print(remote_path + " Server upload_huge_file(), ");
+        synchronized (path_lock_map.get(remote_path)) {
+            File file = new File(remote_path);
+
+            RandomAccessFile raf;
+            try {
+                raf = new RandomAccessFile(file, "rw");
+                raf.seek(offset);
+                raf.write(uploaded_file);
+                raf.close();
+            } catch (Exception e) {
+                System.err.println("Server upload_file() fail");
+                e.printStackTrace();
+            }
+            if (finished) {
+                // Update version map
+                if (path_version_map.containsKey(remote_path)) {
+                    path_version_map.put(remote_path, path_version_map.get(remote_path) + 1);
+                } else {
+                    System.err.println("EMPTY VER SHOULD NOT HAPPEN ON UPLOADED FILE!");
+                    path_version_map.put(remote_path, 1);
+                }
+                int version = path_version_map.get(remote_path);
+                // System.err.println("version: " + version);
+                return version;
+            }
+
+        }
+        return 0;
 
     }
 
@@ -219,17 +240,25 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      */
     public byte[] get_file(String path, long offset) throws RemoteException {
         String remote_path = get_remote_path(path);
-        System.err.println(remote_path + " Server get_file() with chunking!");
+        System.err.println(remote_path + " Server get_file() for HUGE FILE with chunking!");
         File file = new File(remote_path);
         // assert(file.exists());
         // assert(!file.isDirectory());
-        byte[] file_bytes = new byte[chunk_size];
+        byte[] file_bytes;
+        if (offset + chunk_size < file.length()) {
+            file_bytes = new byte[chunk_size];
+        } else {
+            int length = (int)(file.length() - offset);
+            file_bytes = new byte[length];
+        }
 
         try {
             RandomAccessFile raf = new RandomAccessFile(file, "r");
             raf.seek(offset);
-            raf.read(file_bytes, 0, chunk_size);
-            raf.close();
+            int result = raf.read(file_bytes);
+            assert(result != -1);
+            System.err.println("GETFILE RESULT: " + +result + "contents: " + file_bytes);
+            // raf.close();
         } catch (IOException e) {
             System.err.println("Exception in getting file from server");
             e.printStackTrace();
@@ -289,7 +318,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         System.err.println("rootdir is: " + rootdir);
 
         String server_name = "//" + "127.0.0.1" + ":" + port + "/peizhaolServer";
-        // String server_name2 = "//" + "128.2.13.179" + ":" + 10608 + "/peizhaolServer";
+        // String server_name2 = "//" + "128.2.13.163" + ":" + 10608 + "/peizhaolServer";
 
         try {
             Server server = new Server();

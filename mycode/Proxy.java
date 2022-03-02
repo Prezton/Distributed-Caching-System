@@ -28,6 +28,7 @@ class Proxy {
     private static int cache_size;
     private static Cache cache;
     private static final int chunk_size = 204800;
+    private static final int huge_file_size = 10000000;
 
     private static class FileHandler implements FileHandling {
 
@@ -175,18 +176,50 @@ class Proxy {
             if (fileinfo.access_mode.equals("rw")) {
                 try {
                     long new_length = raf.length();
-                    byte[] sent_file = new byte[(int)new_length];
-                    raf.seek(0);
-                    int result = raf.read(sent_file);
-                    assert(result != -1);
-                    int new_version = srv.upload_file(fileinfo.orig_path, sent_file);
-                    synchronized (cache_lock) {
-                        cache.decrease_reference_count(fileinfo.write_path);
-                        if (cache.update_file_and_version(fileinfo, new_version, (int)new_length) == -2) {
-                            return Errors.ENOMEM;
+                    if (new_length > huge_file_size) {
+                        int tmp_length = chunk_size;
+                        byte[] sent_file = new byte[chunk_size];
+                        int offset = 0;
+                        boolean finished = false;
+                        int new_version = 0;
+                        while (offset < new_length) {
+                            raf.seek(offset);
+                            if (offset + chunk_size > new_length) {
+                                tmp_length = (int)new_length - offset;
+                                sent_file = new byte[tmp_length];
+                            }
+                            int read_result = raf.read(sent_file, 0, tmp_length);
+                            assert(read_result != -1);
+                            if (offset + chunk_size > new_length) {
+                                finished = true;
+                                new_version = srv.upload_huge_file(fileinfo.orig_path, sent_file, offset, finished);
+                                break;
+                            }
+                            srv.upload_huge_file(fileinfo.orig_path, sent_file, offset, finished);
+                            offset += chunk_size;
                         }
-                        cache.traverse_cache();
+                        synchronized (cache_lock) {
+                            cache.decrease_reference_count(fileinfo.write_path);
+                            if (cache.update_file_and_version(fileinfo, new_version, (int)new_length) == -2) {
+                                return Errors.ENOMEM;
+                            }
+                            // cache.traverse_cache();
+                        }
+                    } else {
+                        byte[] sent_file = new byte[(int)new_length];
+                        raf.seek(0);
+                        int result = raf.read(sent_file);
+                        assert(result != -1);
+                        int new_version = srv.upload_file(fileinfo.orig_path, sent_file);
+                        synchronized (cache_lock) {
+                            cache.decrease_reference_count(fileinfo.write_path);
+                            if (cache.update_file_and_version(fileinfo, new_version, (int)new_length) == -2) {
+                                return Errors.ENOMEM;
+                            }
+                            cache.traverse_cache();
+                        }
                     }
+
                 } catch (Exception e) {
                     System.err.println("Proxy close(), sent file failed");
                     e.printStackTrace();
@@ -429,13 +462,20 @@ class Proxy {
                     }
                 }
 
-                
+                // For huge file, fetch and save locally using chunks
+                if (remote_file_size > huge_file_size) {
+                    int fetch_result = fetch_save_huge_file(path, cache_path, remote_file_size);
+                    if (fetch_result != 0) {
+                        System.err.println("Proxy: Error in Fetch_save_huge_file");
+                    }
+                } else {
+                    // If the file is on server, just fetch it.
+                    byte[] received_file = fetch_file(path);
+                    // Save file to cache_dir
+                    save_file_locally(cache_path, received_file);
+                }
 
 
-                // If the file is on server, just fetch it.
-                byte[] received_file = fetch_file(path);
-                // Save file to cache_dir
-                save_file_locally(cache_path, received_file);
 
                 cache.add_to_cacheline(new CachedFileInfo(fileinfo));
                 
@@ -544,13 +584,14 @@ class Proxy {
         }
 
         /**
-        * @brief Get file from server with chunking, and save it locally, 
-        * @brief an integration of fetch_file and save_file_locally
+        * @brief Get file from server with chunking, and save it locally
+        * @brief an integration of fetch_file and save_file_locally, but for huge files
         * @param path remote file path on server
         * @param offset file offset used for chunking
+        * @param file_size size of the huge file, assume file size < 2 ^ 32 (within integer)
         * @return an array of file bytes
         */
-        private byte[] fetch_save_huge_file(String path, String cache_path, long file_size) {
+        private int fetch_save_huge_file(String path, String cache_path, int file_size) {
             System.err.println("Proxy fetch_save_huge_file() with chunking");
             byte[] received_file = null;
             long offset = 0;
@@ -559,14 +600,16 @@ class Proxy {
                 while (offset < file_size) {
                     received_file = srv.get_file(path, offset);
                     offset += chunk_size;
+                    System.err.println("received file is: " + received_file + "Length: " + received_file.length);
                     tmp.write(received_file);
                 }
                 tmp.close();
             } catch (IOException e) {
                 System.err.println("Proxy: fetch_save_huge_file() failed");
                 e.printStackTrace();
+                return 0;
             }
-            return null;
+            return 0;
         }
 
 

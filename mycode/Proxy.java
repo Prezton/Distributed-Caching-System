@@ -74,8 +74,6 @@ class Proxy {
             } else {
                 return Errors.EINVAL;
             }
-
-            // boolean is_dir = file.isDirectory();
             
             // Set a series of flags according to Server returned infomation
             boolean is_dir = reply_fileinfo.is_dir;
@@ -139,12 +137,6 @@ class Proxy {
                 fileinfo = set_fileinfo_value(is_existed, is_dir, remote_version_num, remote_file_size, cache_path, path, null);
             }
 
-
-
-
-
-
-
             fd_file_map.put(intFD, fileinfo);
 
             return intFD;
@@ -177,27 +169,7 @@ class Proxy {
                 try {
                     long new_length = raf.length();
                     if (new_length > huge_file_size) {
-                        int tmp_length = chunk_size;
-                        byte[] sent_file = new byte[chunk_size];
-                        int offset = 0;
-                        boolean finished = false;
-                        int new_version = 0;
-                        while (offset < new_length) {
-                            raf.seek(offset);
-                            if (offset + chunk_size > new_length) {
-                                tmp_length = (int)new_length - offset;
-                                sent_file = new byte[tmp_length];
-                            }
-                            int read_result = raf.read(sent_file, 0, tmp_length);
-                            assert(read_result != -1);
-                            if (offset + chunk_size > new_length) {
-                                finished = true;
-                                new_version = srv.upload_huge_file(fileinfo.orig_path, sent_file, offset, finished);
-                                break;
-                            }
-                            srv.upload_huge_file(fileinfo.orig_path, sent_file, offset, finished);
-                            offset += chunk_size;
-                        }
+                        int new_version = send_huge_file(new_length, raf, fileinfo);
                         synchronized (cache_lock) {
                             cache.decrease_reference_count(fileinfo.write_path);
                             if (cache.update_file_and_version(fileinfo, new_version, (int)new_length) == -2) {
@@ -370,15 +342,6 @@ class Proxy {
             boolean is_existed = reply_fileinfo.is_existed;
             int remote_version = reply_fileinfo.version;
             String cache_path = get_cache_path(path) + "_rdonly_" + remote_version;
-
-            // if (!is_existed) {
-            //     return Errors.ENOENT;
-            // }
-
-            // if (reply_fileinfo.is_dir) {
-            //     return Errors.EISDIR;
-            // }
-
             // If file is outside server root directory
             if (!reply_fileinfo.path_valid) {
                 System.err.println("Proxy: unlink() Remote path outside server rootdir");
@@ -425,6 +388,43 @@ class Proxy {
         }
 
         /**
+        * @brief Send file to remote server, used in close()
+        * @param new_length new length of the file
+        * @param raf randomaccessfile for read and write, stored in map at end of this method
+        * @param fileinfo fileinfo, prefilled with remote reply information
+        * @return new file version id
+        */
+        private int send_huge_file(long new_length, RandomAccessFile raf, FileInfo fileinfo) {
+            int tmp_length = chunk_size;
+            byte[] sent_file = new byte[chunk_size];
+            int offset = 0;
+            boolean finished = false;
+            int new_version = 0;
+            try {
+                while (offset < new_length) {
+                    raf.seek(offset);
+                    if (offset + chunk_size > new_length) {
+                        tmp_length = (int)new_length - offset;
+                        sent_file = new byte[tmp_length];
+                    }
+                    int read_result = raf.read(sent_file, 0, tmp_length);
+                    assert(read_result != -1);
+                    if (offset + chunk_size > new_length) {
+                        finished = true;
+                        new_version = srv.upload_huge_file(fileinfo.orig_path, sent_file, offset, finished);
+                        break;
+                    }
+                    srv.upload_huge_file(fileinfo.orig_path, sent_file, offset, finished);
+                    offset += chunk_size;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            return new_version;
+        }
+
+        /**
         * @brief Deal with 3 cases: 1. File not in cache 2. File in cache but not latest 3. File in cache and valid.
         * @param fileinfo fileinfo, prefilled with remote reply information
         * @param raf randomaccessfile for read and write, stored in map at end of this method
@@ -446,7 +446,7 @@ class Proxy {
                 System.err.println(path + " Getting from remote server!");
                 // Get from remote server if local version does not match or local has no correct file
                 if (remote_file_size > cache_size) {
-                    // return Errors.ENOMEM;
+                    // Errors.ENOMEM;
                     return -2;
                 }
                 
@@ -457,7 +457,7 @@ class Proxy {
                 if (cache.get_cache_remain_size() < remote_file_size) {
                     boolean is_enough = cache.evict(remote_file_size);
                     if (!is_enough) {
-                        // return Errors.ENOMEM;
+                        // Errors.ENOMEM;
                         return -2;
                     }
                 }
@@ -517,7 +517,7 @@ class Proxy {
                 } catch (FileNotFoundException e) {
                     System.err.println("exception in open: RandomAccessFile(file, access_mode)");
                     e.printStackTrace();
-                    // return Errors.ENOENT;
+                    // Errors.ENOENT;
                     return -1;
                 }
                 fileinfo.raf = raf;
@@ -531,7 +531,7 @@ class Proxy {
                 } catch (FileNotFoundException e) {
                     System.err.println("exception in open: RandomAccessFile(file, access_mode)");
                     e.printStackTrace();
-                    // return Errors.ENOENT;
+                    // Errors.ENOENT;
                     return -1;
                 }
                 fileinfo.raf = raf;
@@ -630,15 +630,14 @@ class Proxy {
             fileinfo.write_path = write_path;
             File file = new File(write_path);
             if (cache.get_cache_remain_size() < fileinfo.file_size) {
-                // BUG HERE! if you evict for write copies, it may be possible to evict your own read copy
-                // So you cannot do files.copy() here!
+
                 boolean is_enough = cache.evict(fileinfo.file_size);
                 if (!is_enough) {
                     // Errors.ENOMEM
                     return -2;
                 }
             }
-            // source: https://www.journaldev.com/861/java-copy-file
+
             try {
                 Files.copy((new File(cache_path)).toPath(), (new File(write_path)).toPath());
                 cache.add_to_cacheline_write_ver(new CachedFileInfo(fileinfo));
@@ -646,9 +645,6 @@ class Proxy {
                 System.err.println("Proxy: create_write_copy() failed copy file");
                 e.printStackTrace();
             }
-            // Problem: you can't simply add to cacheline here, because it adds the cache_path (_rdonly_)
-            // But if you don't add, cache size does not change and you cannot track it?
-            // Is it really necessary to add this temporary file into the cache_line and path_file_map?
             return 0;
         }
 
@@ -702,7 +698,6 @@ class Proxy {
     }
 
     public static void main(String[] args) throws IOException {
-        // System.out.println("Hello World");
 
         String serverip = args[0];
         int port = Integer.parseInt(args[1]);

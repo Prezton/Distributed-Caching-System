@@ -141,9 +141,6 @@ public class Cache {
     public void delete_old_versions(String orig_path, int new_version) {
         System.err.println("Cache: delete_old_versions");
         String partial_path = get_cache_path(orig_path) + "_rdonly_";
-
-        // Delete all cached files that are older than this version, and have a reference count of 0
-        // Iterator<CachedFileInfo> itr = cache_line.iterator();
         
         for (int i = 0; i < new_version; i ++) {
             String tmp_path = partial_path + i;
@@ -165,39 +162,6 @@ public class Cache {
         
     }
 
-
-    /**
-     * @brief remove existing file in LinkedList and HashMap, and delete it.
-     * @param cached_fileinfo cached_fileinfo to be removed
-     */
-    // private synchronized void remove_file_v2(CachedFileInfo cached_fileinfo) {
-    //     String cache_path = cached_fileinfo.path;
-    //     boolean is_removed = cache_line.remove(cached_fileinfo);
-    //     CachedFileInfo tmp = path_file_map.remove(cache_path);
-    //     File file = new File(cache_path);
-    //     file.delete();
-    //     if (!is_removed || (tmp == null)) {
-    //         System.err.println("Proxy remove_file_v2: failed to remove CachedFileInfo from list or map" + is_removed + " " + tmp);
-    //         return;
-    //     }
-    //     current_cache_size -= cached_fileinfo.file_size;
-
-    // }
-
-    /**
-     * @brief update existing fileinfo in LinkedList and HashMap
-     * @param cached_fileinfo file information to update
-     */
-    // private void update_file(CachedFileInfo cached_fileinfo) {
-    //     String cache_path = cached_fileinfo.path;
-    //     CachedFileInfo old_cached_fileinfo = path_file_map.get(cache_path);
-    //     assert(old_cached_fileinfo.version != cached_fileinfo.version);
-
-    //     remove_file_v2(cached_fileinfo);
-    //     cache_line.add(cached_fileinfo);
-    //     path_file_map.put(cache_path, cached_fileinfo);
-
-    // }
 
     public void move_to_end(CachedFileInfo cached_fileinfo) {
         cache_line.remove(cached_fileinfo);

@@ -17,9 +17,6 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
     private static final int chunk_size = 204800;
     private static final int huge_file_size = 10000000;
 
-    // UnicastRemoteObject Instantiate a Server
-    // listen and wait for a client
-    // and create a thread for each client
     public Server() throws RemoteException {
         super();
     }
@@ -258,7 +255,6 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
             int result = raf.read(file_bytes);
             assert(result != -1);
             System.err.println("GETFILE RESULT: " + +result + "contents: " + file_bytes);
-            // raf.close();
         } catch (IOException e) {
             System.err.println("Exception in getting file from server");
             e.printStackTrace();
@@ -281,6 +277,7 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
 
         return cano_path;
     }
+
     /**
      * @brief if the file is not in version map, set it to 1, the file must exist!!!
      * @param path String path to check
@@ -291,23 +288,16 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         }
     }
 
+    /**
+     * @brief check if path is valid
+     * @param path String path to check
+     * @return true if valid, else false
+     */
     private boolean check_server_path(String path, String remote_path) {
-        // File file = new File(rootdir);
-        // String cano_rootdir = null;
-        // boolean is_valid;
-        // try {
-        //     cano_rootdir = file.getCanonicalPath();
-        // } catch (IOException e) {
-        //     e.printStackTrace();
-        // }
-        // System.err.println("check path: " + path + "\n" + remote_path + "\n" + cano_rootdir);
 
         if (path.startsWith("..") || path.startsWith("../") || path.startsWith("/..")) {
             return false;
         }
-        // if (!remote_path.contains(cano_rootdir)) {
-        //     return false;
-        // }
 
         return true;
     }
@@ -318,15 +308,12 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
         System.err.println("rootdir is: " + rootdir);
 
         String server_name = "//" + "127.0.0.1" + ":" + port + "/peizhaolServer";
-        // String server_name2 = "//" + "128.2.13.163" + ":" + 10608 + "/peizhaolServer";
 
         try {
             Server server = new Server();
             LocateRegistry.createRegistry(port);
-            // LocateRegistry.createRegistry(10608);
 
             Naming.rebind(server_name, server);
-            // Naming.rebind(server_name2, server);
 
         } catch(Exception e) {
             System.err.println("An exception in Server main!");

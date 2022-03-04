@@ -18,17 +18,33 @@ class Proxy {
      * map between fd and RandomAccessFile Object
      */
     private static Map<Integer, FileInfo> fd_file_map = new ConcurrentHashMap<Integer, FileInfo>();
+    /**
+     * used for file descriptor assignment
+     */
     private static int fd_count = 0;
+    /**
+     * locks for file descriptor assignment
+     */
     private static final Object lock = new Object();
-    // Special lock used for cache operations
+    /**
+     * Special lock used for cache operations
+     */
     private static final Object cache_lock = new Object();
+
+    /**
+     * chunk size used for huge file transmission
+     */
+    private static final int chunk_size = 204800;
+    /**
+     * huge file size lower bound
+     */
+    private static final int huge_file_size = 10000000;
+
     private static String server_name;
     private static RemoteOps srv;
     private static String cache_dir;
     private static int cache_size;
     private static Cache cache;
-    private static final int chunk_size = 204800;
-    private static final int huge_file_size = 10000000;
 
     private static class FileHandler implements FileHandling {
 
@@ -138,7 +154,6 @@ class Proxy {
             }
 
             fd_file_map.put(intFD, fileinfo);
-
             return intFD;
         }
 
@@ -175,7 +190,6 @@ class Proxy {
                             if (cache.update_file_and_version(fileinfo, new_version, (int)new_length) == -2) {
                                 return Errors.ENOMEM;
                             }
-                            // cache.traverse_cache();
                         }
                     } else {
                         byte[] sent_file = new byte[(int)new_length];
@@ -191,7 +205,6 @@ class Proxy {
                             cache.traverse_cache();
                         }
                     }
-
                 } catch (Exception e) {
                     System.err.println("Proxy close(), sent file failed");
                     e.printStackTrace();
@@ -226,7 +239,6 @@ class Proxy {
                 return Errors.EINVAL;
             }
             
-
             FileInfo fileinfo = fd_file_map.get(fd);
             if (fileinfo.is_dir) {
                 return Errors.EISDIR;
@@ -270,8 +282,6 @@ class Proxy {
                 e.printStackTrace();
                 return Errors.EBADF;
             }
-            
-
         }
 
         public long lseek( int fd, long pos, LseekOption o ) {
@@ -347,7 +357,6 @@ class Proxy {
                 System.err.println("Proxy: unlink() Remote path outside server rootdir");
                 return Errors.EPERM;
             }
-
             File file = new File(cache_path);
             try {
                 // Delete local cached copy (all versions) and if latest ver exists, also delete it
@@ -365,7 +374,6 @@ class Proxy {
                         }
                     }
                 }
-
                 // Delete server's master copy and get return number
                 int delete_result = srv.delete_file(path);
                 if (delete_result == -1) {
@@ -432,7 +440,6 @@ class Proxy {
         * @return an array of file bytes
         */
         private int deal(FileInfo fileinfo, RandomAccessFile raf, String access_mode, int fd) {
-            System.err.println("Proxy: deal()");
             String path = fileinfo.orig_path;
             String cache_path = fileinfo.path;
             int remote_version_num = fileinfo.version;
@@ -443,17 +450,13 @@ class Proxy {
             
             // version validation, check local and remote version diff
             if ((!in_cache)) {
-                System.err.println(path + " Getting from remote server!");
                 // Get from remote server if local version does not match or local has no correct file
                 if (remote_file_size > cache_size) {
                     // Errors.ENOMEM;
                     return -2;
                 }
-                
-                System.err.println("remain size: " + cache.get_cache_remain_size() + " current file size: " + remote_file_size);
                 // Delete all old versions in the cache, use orig_path + latest version to iterate through stale files
                 cache.delete_old_versions(path, remote_version_num);
-                
                 if (cache.get_cache_remain_size() < remote_file_size) {
                     boolean is_enough = cache.evict(remote_file_size);
                     if (!is_enough) {
@@ -461,7 +464,6 @@ class Proxy {
                         return -2;
                     }
                 }
-
                 // For huge file, fetch and save locally using chunks
                 if (remote_file_size > huge_file_size) {
                     int fetch_result = fetch_save_huge_file(path, cache_path, remote_file_size);
@@ -474,13 +476,8 @@ class Proxy {
                     // Save file to cache_dir
                     save_file_locally(cache_path, received_file);
                 }
-
-
-
                 cache.add_to_cacheline(new CachedFileInfo(fileinfo));
-                
             } else {
-                System.err.println("Getting from local cache!");
                 // Get from local cache
                 CachedFileInfo cached_fileinfo;
                 cached_fileinfo = cache.get_local_file_info(cache_path);
@@ -490,7 +487,6 @@ class Proxy {
                 } else {
                     System.err.println("Proxy: get_local_file_info() failed");
                 }
-                
             }
 
             // Create write copy for non-read mode
@@ -552,7 +548,6 @@ class Proxy {
         * @return an array of file bytes
         */
         private byte[] fetch_file(String path) {
-            System.err.println("Proxy fetch_file()");
             byte[] received_file = null;
             try {
                 received_file = srv.get_file(path);
@@ -570,7 +565,6 @@ class Proxy {
         * @param received_file received_file from server
         */
         private void save_file_locally(String cache_path, byte[] received_file) {
-            System.err.println("Proxy save_file_locally(), path: " + cache_path);
 
             RandomAccessFile tmp;
             try {
@@ -592,7 +586,6 @@ class Proxy {
         * @return an array of file bytes
         */
         private int fetch_save_huge_file(String path, String cache_path, int file_size) {
-            System.err.println("Proxy fetch_save_huge_file() with chunking");
             byte[] received_file = null;
             long offset = 0;
             try {
@@ -620,7 +613,6 @@ class Proxy {
         * @param fd fd paired with fileinfo, used for writing copy's name
         */
         private int create_write_copy(FileInfo fileinfo, int fd) {
-            System.err.println("Proxy: create_write_copy()");
             String tmp = get_cache_path(fileinfo.orig_path);
             String write_path = tmp + "_wr_" + fd;
 
@@ -656,9 +648,6 @@ class Proxy {
         }
     }
 
-    private static boolean check_path(String cache_path) {
-        return cache_path.contains(cache_dir);
-    }
 
     /**
     * @brief Get local cache path by adding cache directory

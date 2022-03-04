@@ -4,7 +4,13 @@ import java.util.concurrent.*;
 
 public class Cache {
 
+    /**
+     * cache line used for maintain LRU
+     */
     private LinkedList<CachedFileInfo> cache_line;
+    /**
+     * path-file map used for cache reference and a series of cache operations
+     */
     private Map<String, CachedFileInfo> path_file_map;
     private int current_cache_size;
     private final int total_cache_size;
@@ -18,6 +24,11 @@ public class Cache {
         this.cache_dir = cache_dir;
     }
 
+    /**
+     * @brief get version id
+     * @param[in] cache_path String path to check
+     * @return false if not in cache, otherwise true
+     */
     public boolean contains_file(String cache_path) {
         return path_file_map.containsKey(cache_path);
     }
@@ -40,7 +51,6 @@ public class Cache {
      * @param cached_fileinfo file information to add
      */
     public synchronized void add_to_cacheline(CachedFileInfo cached_fileinfo) {
-        System.err.println("Cache: add_to_cacheline()");
         String cache_path = cached_fileinfo.path;
         if (!path_file_map.containsKey(cache_path)) {
             // Not in cache yet
@@ -55,7 +65,6 @@ public class Cache {
      * @param cached_fileinfo file information to add
      */
     public synchronized void add_to_cacheline_write_ver(CachedFileInfo cached_fileinfo) {
-        System.err.println("Cache: add_to_cacheline_write_ver()");
         String write_path = cached_fileinfo.write_path;
         if (!path_file_map.containsKey(write_path)) {
             // Not in cache yet
@@ -75,7 +84,6 @@ public class Cache {
      * @param file_size File size after write
      */
     public synchronized int update_file_and_version(FileInfo fileinfo, int latest_version, int file_size) {
-        System.err.println("Cache: update_file_and_version");
         String write_path = fileinfo.write_path;
 
         // Remove from cache_line and path_file_map just for now, add later with a new file size
@@ -139,7 +147,6 @@ public class Cache {
     * @return concatenated local cache path
     */
     public void delete_old_versions(String orig_path, int new_version) {
-        System.err.println("Cache: delete_old_versions");
         String partial_path = get_cache_path(orig_path) + "_rdonly_";
         
         for (int i = 0; i < new_version; i ++) {
@@ -148,7 +155,6 @@ public class Cache {
             if (tmp_file.exists()) {
 
                 if (path_file_map.containsKey(tmp_path) && path_file_map.get(tmp_path).reference_count <= 0) {
-                    System.err.println("old versions DELETED: " + tmp_path);
                     CachedFileInfo to_delete = path_file_map.remove(tmp_path);
                     cache_line.remove(to_delete);
                     tmp_file.delete();
@@ -162,20 +168,32 @@ public class Cache {
         
     }
 
-
+    /**
+    * @brief move the cached entry to MRU position
+    * @param cached_fileinfo MRU cached entry
+    */
     public void move_to_end(CachedFileInfo cached_fileinfo) {
         cache_line.remove(cached_fileinfo);
         cache_line.add(cached_fileinfo);
     }
 
+    /**
+    * @brief move the cached entry to MRU position
+    * @param cache_path MRU cached path
+    */
     public void move_to_end(String cache_path) {
         CachedFileInfo cached_fileinfo = path_file_map.get(cache_path);
         cache_line.remove(cached_fileinfo);
         cache_line.add(cached_fileinfo);
     }
 
+
+    /**
+    * @brief LRU eviction
+    * @param file_size size of the file to be added to cache
+    * @return true if current cache space is enough, else false
+    */
     public synchronized boolean evict(long file_size) {
-        System.err.println("Cache: evict()");
         Iterator<CachedFileInfo> itr = cache_line.iterator();
         while (itr.hasNext()) {
             CachedFileInfo current = itr.next();
@@ -202,10 +220,17 @@ public class Cache {
         return (get_cache_remain_size() >= file_size);
     }
 
+    /**
+    * @brief return the remain space of cache
+    * @return cache remain size
+    */
     public long get_cache_remain_size() {
         return (total_cache_size - current_cache_size);
     }
 
+    /**
+    * @brief used for debugging, traverse the cache
+    */
     public void traverse_cache() {
         System.err.println("Start traversal");
         Iterator<CachedFileInfo> itr = cache_line.iterator();
@@ -219,6 +244,10 @@ public class Cache {
         }
     }
 
+    /**
+    * @brief add a reference count for the cached entry
+    * @return true if added, false if entry not found in cache
+    */
     public boolean add_reference_count(String cache_path) {
         if (path_file_map.containsKey(cache_path)) {
             path_file_map.get(cache_path).reference_count += 1;
@@ -228,6 +257,10 @@ public class Cache {
         return true;
     }
 
+    /**
+    * @brief decrease a reference count for the cached entry
+    * @return true if added, false if entry not found in cache
+    */
     public boolean decrease_reference_count(String cache_path) {
         if (path_file_map.containsKey(cache_path)) {
             path_file_map.get(cache_path).reference_count -= 1;

@@ -128,7 +128,6 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      */
     public synchronized int upload_huge_file(String path, byte[] uploaded_file, long offset, boolean finished) throws RemoteException {
         String remote_path = get_remote_path(path);
-        System.err.print(remote_path + " Server upload_huge_file(), ");
         synchronized (path_lock_map.get(remote_path)) {
             File file = new File(remote_path);
 
@@ -237,7 +236,6 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
      */
     public byte[] get_file(String path, long offset) throws RemoteException {
         String remote_path = get_remote_path(path);
-        System.err.println(remote_path + " Server get_file() for HUGE FILE with chunking!");
         File file = new File(remote_path);
         // assert(file.exists());
         // assert(!file.isDirectory());
@@ -254,7 +252,6 @@ public class Server extends UnicastRemoteObject implements RemoteOps{
             raf.seek(offset);
             int result = raf.read(file_bytes);
             assert(result != -1);
-            System.err.println("GETFILE RESULT: " + +result + "contents: " + file_bytes);
         } catch (IOException e) {
             System.err.println("Exception in getting file from server");
             e.printStackTrace();
